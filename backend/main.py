@@ -1,6 +1,6 @@
 import json
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, HttpUrl
 
 from backend.database import init_db, get_connection
@@ -10,7 +10,12 @@ from backend.security.ssl_checker import check_ssl
 from backend.security.url_security import check_url_security
 
 
-app = FastAPI()
+app = FastAPI(
+    title="Phishing URL Risk Detector API",
+    description="Backend API for detecting suspicious and phishing URLs.",
+    version="1.0.0"
+)
+
 
 # Initialize database when the application starts
 init_db()
@@ -30,73 +35,105 @@ def home():
 @app.post("/api/v1/scan")
 def scan_url(request: URLRequest):
 
-    # Validate URL
-    is_valid = validate_url(str(request.url))
+    try:
+        # Convert URL to string
+        url = str(request.url)
 
-    # Get domain
-    domain = request.url.host
+        # Validate URL
+        is_valid = validate_url(url)
 
-    # Security checks
-    dns_result = check_dns(domain)
-    ssl_result = check_ssl(domain)
-    url_security_result = check_url_security(str(request.url))
+        if not is_valid:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid URL"
+            )
 
-    # Create scan result
-    result = {
-        "url": str(request.url),
-        "valid": is_valid,
-        "dns": dns_result,
-        "ssl": ssl_result,
-        "url_security": url_security_result,
-        "message": "URL received successfully"
-    }
+        # Get domain
+        domain = request.url.host
 
-    # Save scan result to database
-    connection = get_connection()
+        if not domain:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not extract domain from URL"
+            )
 
-    connection.execute(
-        """
-        INSERT INTO scan_history (url, result_json)
-        VALUES (?, ?)
-        """,
-        (
-            str(request.url),
-            json.dumps(result)
+        # Security checks
+        dns_result = check_dns(domain)
+        ssl_result = check_ssl(domain)
+        url_security_result = check_url_security(url)
+
+        # Create scan result
+        result = {
+            "url": url,
+            "valid": is_valid,
+            "dns": dns_result,
+            "ssl": ssl_result,
+            "url_security": url_security_result,
+            "message": "URL scanned successfully"
+        }
+
+        # Save scan result to database
+        connection = get_connection()
+
+        connection.execute(
+            """
+            INSERT INTO scan_history (url, result_json)
+            VALUES (?, ?)
+            """,
+            (
+                url,
+                json.dumps(result)
+            )
         )
-    )
 
-    connection.commit()
-    connection.close()
+        connection.commit()
+        connection.close()
 
-    return result
+        return result
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred while scanning the URL"
+        )
 
 
 @app.get("/api/v1/history")
 def get_history():
 
-    connection = get_connection()
+    try:
+        connection = get_connection()
 
-    rows = connection.execute(
-        """
-        SELECT id, url, classification, risk_score,
-               confidence, scan_time
-        FROM scan_history
-        ORDER BY id DESC
-        """
-    ).fetchall()
+        rows = connection.execute(
+            """
+            SELECT id, url, classification, risk_score,
+                   confidence, scan_time
+            FROM scan_history
+            ORDER BY id DESC
+            """
+        ).fetchall()
 
-    connection.close()
+        connection.close()
 
-    history = []
+        history = []
 
-    for row in rows:
-        history.append({
-            "id": row["id"],
-            "url": row["url"],
-            "classification": row["classification"],
-            "risk_score": row["risk_score"],
-            "confidence": row["confidence"],
-            "scan_time": row["scan_time"]
-        })
+        for row in rows:
+            history.append({
+                "id": row["id"],
+                "url": row["url"],
+                "classification": row["classification"],
+                "risk_score": row["risk_score"],
+                "confidence": row["confidence"],
+                "scan_time": row["scan_time"]
+            })
 
-    return history
+        return history
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not retrieve scan history"
+        )
