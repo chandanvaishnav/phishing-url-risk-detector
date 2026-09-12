@@ -7,12 +7,19 @@ def check_ssl(domain: str) -> dict:
     try:
         context = ssl.create_default_context()
 
-        with socket.create_connection((domain, 443), timeout=5) as connection:
-            with context.wrap_socket(connection, server_hostname=domain) as ssl_socket:
+        with socket.create_connection(
+            (domain, 443),
+            timeout=5
+        ) as connection:
+
+            with context.wrap_socket(
+                connection,
+                server_hostname=domain
+            ) as ssl_socket:
+
                 certificate = ssl_socket.getpeercert()
 
-                issuer = certificate.get("issuer", [])
-
+                issuer = certificate.get("issuer", {})
                 issuer_info = {}
 
                 for item in issuer:
@@ -27,13 +34,38 @@ def check_ssl(domain: str) -> dict:
                 return {
                     "valid": True,
                     "expires": expiry_date.strftime("%Y-%m-%d"),
-                    "issuer": issuer_info
+                    "issuer": issuer_info,
+                    "error": None
                 }
 
-    except Exception as e:
+    except ssl.SSLCertVerificationError:
         return {
             "valid": False,
             "expires": None,
             "issuer": None,
-            "error": str(e)
+            "error": "SSL certificate verification failed"
+        }
+
+    except (socket.timeout, TimeoutError):
+        return {
+            "valid": False,
+            "expires": None,
+            "issuer": None,
+            "error": "SSL connection timed out"
+        }
+
+    except ConnectionRefusedError:
+        return {
+            "valid": False,
+            "expires": None,
+            "issuer": None,
+            "error": "HTTPS connection was refused"
+        }
+
+    except Exception:
+        return {
+            "valid": False,
+            "expires": None,
+            "issuer": None,
+            "error": "SSL check failed"
         }
