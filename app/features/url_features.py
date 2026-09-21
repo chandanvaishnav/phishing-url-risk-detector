@@ -1,6 +1,8 @@
 import re
 from urllib.parse import urlparse, urlunsplit
 
+import tldextract
+
 
 def normalize_url_for_features(url: str) -> str:
     """
@@ -105,6 +107,37 @@ def extract_url_features(url: str) -> dict:
     )
 
     # --------------------------------------------------
+    # Domain structure
+    # --------------------------------------------------
+
+    extracted = tldextract.extract(domain)
+
+    if extracted.domain and extracted.suffix:
+        registered_domain = (
+            extracted.domain
+            + "."
+            + extracted.suffix
+        )
+    else:
+        registered_domain = domain
+
+    subdomain = extracted.subdomain
+
+    subdomain_parts = [
+        part
+        for part in subdomain.split(".")
+        if part
+    ]
+
+    no_of_subdomain = len(
+        subdomain_parts
+    )
+
+    is_www_subdomain = int(
+        subdomain.lower() == "www"
+    )
+
+    # --------------------------------------------------
     # Basic URL features
     # --------------------------------------------------
 
@@ -122,8 +155,8 @@ def extract_url_features(url: str) -> dict:
     )
 
     tld = (
-        domain.rsplit(".", 1)[-1].lower()
-        if "." in domain
+        extracted.suffix.lower()
+        if extracted.suffix
         else ""
     )
 
@@ -131,13 +164,7 @@ def extract_url_features(url: str) -> dict:
 
     if is_domain_ip or not domain:
         no_of_subdomain = 0
-    else:
-        domain_parts = domain.split(".")
-
-        no_of_subdomain = max(
-            len(domain_parts) - 2,
-            0
-        )
+        is_www_subdomain = 0
 
     # --------------------------------------------------
     # Character-level features
@@ -156,7 +183,7 @@ def extract_url_features(url: str) -> dict:
     obfuscated_chars = len(
         re.findall(
             r"%[0-9a-fA-F]{2}",
-            feature_url
+            feature_url,
         )
     )
 
@@ -280,4 +307,5 @@ def extract_url_features(url: str) -> dict:
         "has_at_symbol": has_at_symbol,
         "has_hyphen_in_domain": has_hyphen_in_domain,
         "suspicious_keyword_count": suspicious_keyword_count,
+        "IsWWWSubdomain": is_www_subdomain,
     }
