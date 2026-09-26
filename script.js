@@ -1,20 +1,14 @@
 /* ============================================================
-   PHISHGUARD FRONTEND JAVASCRIPT
-   ============================================================
-
-   IMPORTANT:
-
-   This file contains FRONTEND functionality only.
-
-   It does NOT:
-   - perform ML prediction
-   - calculate phishing probability
-   - connect to a database
-   - implement phishing detection rules
-
-   Later, Raj's Flask API + Sumit's ML model can be connected
-   inside the API integration section.
+   PHISHGUARD - FRONTEND
+   Connected to FastAPI Backend
    ============================================================ */
+
+
+/* ============================================================
+   CONFIGURATION
+   ============================================================ */
+
+const API_BASE_URL = "http://127.0.0.1:8000";
 
 
 /* ============================================================
@@ -29,46 +23,87 @@ const analyzeText = document.getElementById("analyzeText");
 const analyzeArrow = document.getElementById("analyzeArrow");
 
 const scannerMessage = document.getElementById("scannerMessage");
-const scannerMessageText = document.getElementById("scannerMessageText");
+const scannerMessageText =
+    document.getElementById("scannerMessageText");
 
 const scanLoading = document.getElementById("scanLoading");
+const scanAgainBtn =
+    document.getElementById("scanAgainBtn");
 
-const scanAgainBtn = document.getElementById("scanAgainBtn");
+const riskScore =
+    document.getElementById("riskScore");
 
-const riskScore = document.getElementById("riskScore");
-const riskGauge = document.getElementById("riskGauge");
-const riskStatus = document.getElementById("riskStatus");
-const riskDescription = document.getElementById("riskDescription");
+const riskGauge =
+    document.getElementById("riskGauge");
 
-const verdictIcon = document.getElementById("verdictIcon");
-const verdictTitle = document.getElementById("verdictTitle");
-const verdictDescription = document.getElementById("verdictDescription");
+const riskStatus =
+    document.getElementById("riskStatus");
 
-const confidenceValue = document.getElementById("confidenceValue");
-const confidenceBar = document.getElementById("confidenceBar");
+const riskDescription =
+    document.getElementById("riskDescription");
 
-const resultStatus = document.getElementById("resultStatus");
+const verdictIcon =
+    document.getElementById("verdictIcon");
 
-const explanationTitle = document.getElementById("explanationTitle");
-const explanationText = document.getElementById("explanationText");
-const reasonList = document.getElementById("reasonList");
+const verdictTitle =
+    document.getElementById("verdictTitle");
 
-const reportUrl = document.getElementById("reportUrl");
-const reportTime = document.getElementById("reportTime");
-const reportVerdict = document.getElementById("reportVerdict");
-const reportRisk = document.getElementById("reportRisk");
-const reportConfidence = document.getElementById("reportConfidence");
-const reportStatus = document.getElementById("reportStatus");
-const reportSummary = document.getElementById("reportSummary");
+const verdictDescription =
+    document.getElementById("verdictDescription");
 
-const printReportBtn = document.getElementById("printReportBtn");
+const confidenceValue =
+    document.getElementById("confidenceValue");
 
-const historyTableBody = document.getElementById("historyTableBody");
-const clearHistoryBtn = document.getElementById("clearHistoryBtn");
+const confidenceBar =
+    document.getElementById("confidenceBar");
 
-const filterButtons = document.querySelectorAll(".filter-btn");
+const resultStatus =
+    document.getElementById("resultStatus");
 
-const navItems = document.querySelectorAll(".nav-item");
+const explanationTitle =
+    document.getElementById("explanationTitle");
+
+const explanationText =
+    document.getElementById("explanationText");
+
+const reasonList =
+    document.getElementById("reasonList");
+
+const reportUrl =
+    document.getElementById("reportUrl");
+
+const reportTime =
+    document.getElementById("reportTime");
+
+const reportVerdict =
+    document.getElementById("reportVerdict");
+
+const reportRisk =
+    document.getElementById("reportRisk");
+
+const reportConfidence =
+    document.getElementById("reportConfidence");
+
+const reportStatus =
+    document.getElementById("reportStatus");
+
+const reportSummary =
+    document.getElementById("reportSummary");
+
+const printReportBtn =
+    document.getElementById("printReportBtn");
+
+const historyTableBody =
+    document.getElementById("historyTableBody");
+
+const clearHistoryBtn =
+    document.getElementById("clearHistoryBtn");
+
+const filterButtons =
+    document.querySelectorAll(".filter-btn");
+
+const navItems =
+    document.querySelectorAll(".nav-item");
 
 
 /* ============================================================
@@ -79,46 +114,88 @@ let currentFilter = "all";
 
 let scanHistory = [];
 
+let latestResult = null;
+
 
 /* ============================================================
    INITIALIZATION
    ============================================================ */
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
 
     loadHistory();
 
     updateClearButton();
 
-    updateNavigation();
-
     renderHistory();
 
+    setupInput();
+
+    setupAnalyzeButton();
+
+    setupHistoryControls();
+
+    setupReportButton();
+
+    setupNavigation();
+
+    updateDashboardStats();
+
 });
 
 
 /* ============================================================
-   URL INPUT
+   INPUT SETUP
    ============================================================ */
 
-urlInput.addEventListener("input", () => {
+function setupInput() {
 
-    updateClearButton();
+    if (urlInput) {
 
-    clearScannerMessage();
+        urlInput.addEventListener(
+            "input",
+            () => {
 
-});
+                hideScannerMessage();
+
+            }
+        );
 
 
-function updateClearButton() {
+        urlInput.addEventListener(
+            "keydown",
+            (event) => {
 
-    if (urlInput.value.trim().length > 0) {
+                if (event.key === "Enter") {
 
-        clearInput.classList.add("visible");
+                    event.preventDefault();
 
-    } else {
+                    analyzeURL();
 
-        clearInput.classList.remove("visible");
+                }
+
+            }
+        );
+
+    }
+
+
+    if (clearInput) {
+
+        clearInput.addEventListener(
+            "click",
+            () => {
+
+                if (urlInput) {
+
+                    urlInput.value = "";
+
+                    urlInput.focus();
+
+                }
+
+            }
+        );
 
     }
 
@@ -126,194 +203,51 @@ function updateClearButton() {
 
 
 /* ============================================================
-   CLEAR INPUT
+   ANALYZE BUTTON
    ============================================================ */
 
-clearInput.addEventListener("click", () => {
+function setupAnalyzeButton() {
 
-    urlInput.value = "";
+    if (!analyzeBtn) {
 
-    updateClearButton();
+        console.error(
+            "PhishGuard: Analyze button not found."
+        );
 
-    urlInput.focus();
-
-    clearScannerMessage();
-
-});
-
-
-/* ============================================================
-   ENTER KEY
-   ============================================================ */
-
-urlInput.addEventListener("keydown", (event) => {
-
-    if (event.key === "Enter") {
-
-        analyzeURL();
-
-    }
-
-});
-
-
-/* ============================================================
-   URL VALIDATION
-   ============================================================ */
-
-function validateURL(value) {
-
-    const url = value.trim();
-
-    if (!url) {
-
-        return {
-            valid: false,
-            message: "Please enter a website URL."
-        };
+        return;
 
     }
 
 
-    if (
-        !url.startsWith("http://") &&
-        !url.startsWith("https://")
-    ) {
-
-        return {
-            valid: false,
-            message: "Please enter a complete URL starting with http:// or https://"
-        };
-
-    }
-
-
-    try {
-
-        const parsed = new URL(url);
-
-        if (!parsed.hostname) {
-
-            return {
-                valid: false,
-                message: "Please enter a valid website address."
-            };
-
-        }
-
-
-        if (
-            parsed.protocol !== "http:" &&
-            parsed.protocol !== "https:"
-        ) {
-
-            return {
-                valid: false,
-                message: "Only HTTP and HTTPS website URLs are supported."
-            };
-
-        }
-
-
-        return {
-            valid: true,
-            url: parsed.href
-        };
-
-    } catch (error) {
-
-        return {
-            valid: false,
-            message: "The URL format is invalid. Please check it and try again."
-        };
-
-    }
-
-}
-
-
-/* ============================================================
-   SCANNER MESSAGES
-   ============================================================ */
-
-function showScannerMessage(message, type = "") {
-
-    scannerMessage.classList.remove(
-        "error",
-        "success"
+    analyzeBtn.addEventListener(
+        "click",
+        analyzeURL
     );
 
-    if (type) {
-
-        scannerMessage.classList.add(type);
-
-    }
-
-    scannerMessageText.textContent = message;
-
-}
-
-
-function clearScannerMessage() {
-
-    scannerMessage.classList.remove(
-        "error",
-        "success"
-    );
-
-    scannerMessageText.textContent =
-        "Your URL is analyzed securely. Do not enter passwords or sensitive information.";
-
 }
 
 
 /* ============================================================
-   LOADING STATE
-   ============================================================ */
-
-function setLoading(isLoading) {
-
-    if (isLoading) {
-
-        analyzeBtn.classList.add("loading");
-
-        analyzeText.textContent = "Analyzing";
-
-        analyzeArrow.textContent = "•••";
-
-        scanLoading.classList.add("active");
-
-    } else {
-
-        analyzeBtn.classList.remove("loading");
-
-        analyzeText.textContent = "Analyze URL";
-
-        analyzeArrow.textContent = "→";
-
-        scanLoading.classList.remove("active");
-
-    }
-
-}
-
-
-/* ============================================================
-   MAIN ANALYZE FUNCTION
+   MAIN SCAN FUNCTION
    ============================================================ */
 
 async function analyzeURL() {
 
-    const validation = validateURL(urlInput.value);
+    if (!urlInput) {
+
+        return;
+
+    }
 
 
-    /* Invalid URL */
+    let url =
+        urlInput.value.trim();
 
-    if (!validation.valid) {
+
+    if (!url) {
 
         showScannerMessage(
-            validation.message,
-            "error"
+            "Please enter a URL."
         );
 
         urlInput.focus();
@@ -323,334 +257,592 @@ async function analyzeURL() {
     }
 
 
-    const url = validation.url;
+    /*
+     * Add https:// when the user enters
+     * example.com instead of https://example.com
+     */
 
+    if (
+        !url.startsWith("http://") &&
+        !url.startsWith("https://")
+    ) {
 
-    /* Start loading */
+        url =
+            "https://" + url;
 
-    setLoading(true);
-
-    showScannerMessage(
-        "Preparing URL for security analysis...",
-        ""
-    );
+    }
 
 
     /*
-        --------------------------------------------------------
-        FUTURE BACKEND INTEGRATION
-        --------------------------------------------------------
+     * Browser-side URL validation
+     */
 
-        Raj's Flask API can be connected here later.
+    try {
 
-        Example:
+        new URL(url);
 
-        const response = await fetch("/api/analyze", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                url: url
-            })
-        });
+    } catch (error) {
 
-        const result = await response.json();
-
-        displayResult(result);
-
-        --------------------------------------------------------
-    */
-
-
-    /*
-        IMPORTANT:
-
-        We are NOT creating a fake ML result here.
-
-        The frontend only demonstrates the scanning state.
-    */
-
-    await wait(1200);
-
-
-    setLoading(false);
-
-    showScannerMessage(
-        "Frontend scanner is ready. Backend API connection will be added later.",
-        ""
-    );
-
-}
-
-
-/* ============================================================
-   WAIT HELPER
-   ============================================================ */
-
-function wait(milliseconds) {
-
-    return new Promise(resolve => {
-
-        setTimeout(resolve, milliseconds);
-
-    });
-
-}
-
-
-/* ============================================================
-   FUTURE RESULT DISPLAY
-   ============================================================ */
-
-function displayResult(result) {
-
-    /*
-        This function is intentionally prepared for
-        Raj's backend + Sumit's ML response.
-
-        Example expected structure:
-
-        {
-            url: "...",
-            prediction: "Safe",
-            risk_score: 10,
-            confidence: 96,
-            features: {
-                https: true,
-                url_length: 20,
-                ip_address: false,
-                at_symbol: false,
-                subdomains: 1,
-                special_characters: 2,
-                url_shortener: false,
-                suspicious_keywords: 0
-            },
-            reasons: []
-        }
-    */
-
-
-    if (!result) {
+        showScannerMessage(
+            "Please enter a valid website URL."
+        );
 
         return;
 
     }
 
 
-    const prediction =
-        result.prediction || "Unknown";
+    hideScannerMessage();
 
-    const score =
-        Number(result.risk_score ?? 0);
-
-    const confidence =
-        Number(result.confidence ?? 0);
+    setLoadingState(true);
 
 
-    displayRiskScore(score);
-
-    displayVerdict(
-        prediction,
-        confidence
+    console.log(
+        "PhishGuard: Sending URL to backend:",
+        url
     );
 
 
-    if (result.features) {
+    try {
 
-        displayFeatures(result.features);
+        const response =
+            await fetch(
+                `${API_BASE_URL}/api/v1/scan`,
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body: JSON.stringify({
+                        url: url
+                    })
+                }
+            );
+
+
+        console.log(
+            "PhishGuard: Backend status:",
+            response.status
+        );
+
+
+        if (!response.ok) {
+
+            let message =
+                "The backend could not scan this URL.";
+
+            try {
+
+                const errorData =
+                    await response.json();
+
+                if (
+                    errorData &&
+                    errorData.detail
+                ) {
+
+                    message =
+                        errorData.detail;
+
+                }
+
+            } catch (error) {
+
+                console.log(
+                    "Could not read backend error."
+                );
+
+            }
+
+
+            throw new Error(message);
+
+        }
+
+
+        const result =
+            await response.json();
+
+
+        console.log(
+            "PhishGuard: Backend result:",
+            result
+        );
+
+
+        latestResult = result;
+
+
+        /* Update result */
+
+        displayResult(result);
+
+
+        /* Update security features */
+
+        displayFeatures(
+            result.url_security || {}
+        );
+
+
+        /* Update security reasons */
+
+        displayReasons(
+            result.risk_engine &&
+            Array.isArray(
+                result.risk_engine.explanation
+            )
+                ? result.risk_engine.explanation
+                : []
+        );
+
+
+        /* Update report */
+
+        updateReport(result);
+
+
+        /* Add to local history */
+
+        addToHistory(result);
+
+
+        /* Refresh dashboard */
+
+        updateDashboardStats();
+
+
+        /* Scroll to result */
+
+        scrollToResult();
+
+
+    } catch (error) {
+
+        console.error(
+            "PhishGuard scan failed:",
+            error
+        );
+
+
+        let message =
+            error.message ||
+            "An unexpected error occurred.";
+
+
+        if (
+            error instanceof TypeError &&
+            message.toLowerCase().includes("fetch")
+        ) {
+
+            message =
+                "Could not connect to the backend. Make sure FastAPI is running on http://127.0.0.1:8000";
+
+        }
+
+
+        showScannerMessage(
+            message
+        );
+
+
+    } finally {
+
+        setLoadingState(false);
 
     }
-
-
-    if (Array.isArray(result.reasons)) {
-
-        displayReasons(result.reasons);
-
-    }
-
-
-    updateReport(
-        result
-    );
-
-
-    addToHistory(
-        result
-    );
 
 }
 
 
 /* ============================================================
-   DISPLAY RISK SCORE
+   DISPLAY RESULT
    ============================================================ */
 
-function displayRiskScore(score) {
+function displayResult(result) {
 
-    const safeScore =
+    const classification =
+        String(
+            result.classification || ""
+        ).toLowerCase();
+
+
+    let score =
+        Number(
+            result.risk_score
+        );
+
+
+    if (
+        Number.isNaN(score)
+    ) {
+
+        score = 0;
+
+    }
+
+
+    let confidence =
+        Number(
+            result.confidence
+        );
+
+
+    if (
+        Number.isNaN(confidence)
+    ) {
+
+        confidence = 0;
+
+    }
+
+
+    /*
+     * Backend confidence is decimal:
+     * 0.808672
+     *
+     * Convert to:
+     * 80.87%
+     */
+
+    if (
+        confidence <= 1
+    ) {
+
+        confidence *= 100;
+
+    }
+
+
+    confidence =
         Math.max(
             0,
             Math.min(
                 100,
-                score
+                confidence
             )
         );
 
 
-    riskScore.textContent =
-        Math.round(safeScore);
+    confidence =
+        Math.round(
+            confidence * 100
+        ) / 100;
 
 
-    const circumference =
-        2 * Math.PI * 65;
+    /* Determine verdict */
+
+    let verdict =
+        "Safe";
+
+    let title =
+        "URL Appears Safe";
+
+    let description =
+        "The URL received a low-risk security assessment.";
 
 
-    const offset =
-        circumference -
-        (safeScore / 100) * circumference;
+    if (
+        classification === "high_risk"
+    ) {
 
+        verdict =
+            "Phishing";
 
-    riskGauge.style.strokeDashoffset =
-        offset;
+        title =
+            "Phishing Detected";
 
-
-    if (safeScore >= 70) {
-
-        riskGauge.style.stroke =
-            "#ff6673";
-
-    } else if (safeScore >= 40) {
-
-        riskGauge.style.stroke =
-            "#eebd5d";
-
-    } else {
-
-        riskGauge.style.stroke =
-            "#39d39b";
+        description =
+            "The security system identified this URL as high risk.";
 
     }
+
+    else if (
+        classification === "suspicious"
+    ) {
+
+        verdict =
+            "Suspicious";
+
+        title =
+            "Suspicious URL";
+
+        description =
+            "The security system identified characteristics that require caution.";
+
+    }
+
+
+    /* Risk score */
+
+    if (riskScore) {
+
+        riskScore.textContent =
+            score.toFixed(2);
+
+    }
+
+
+    if (riskDescription) {
+
+        riskDescription.textContent =
+            `Security risk score: ${score.toFixed(2)} / 100`;
+
+    }
+
+
+    /* Risk status */
+
+    if (riskStatus) {
+
+        riskStatus.classList.remove(
+            "safe",
+            "danger",
+            "awaiting"
+        );
+
+
+        if (
+            classification === "high_risk"
+        ) {
+
+            riskStatus.textContent =
+                "High Risk";
+
+            riskStatus.classList.add(
+                "danger"
+            );
+
+        }
+
+        else if (
+            classification === "suspicious"
+        ) {
+
+            riskStatus.textContent =
+                "Suspicious";
+
+            riskStatus.classList.add(
+                "danger"
+            );
+
+        }
+
+        else {
+
+            riskStatus.textContent =
+                "Low Risk";
+
+            riskStatus.classList.add(
+                "safe"
+            );
+
+        }
+
+    }
+
+
+    /* Risk gauge */
+
+    updateRiskGauge(score);
+
+
+    /* Verdict icon */
+
+    if (verdictIcon) {
+
+        verdictIcon.classList.remove(
+            "safe",
+            "phishing"
+        );
+
+
+        if (
+            classification === "high_risk" ||
+            classification === "suspicious"
+        ) {
+
+            verdictIcon.textContent =
+                "⚠";
+
+            verdictIcon.classList.add(
+                "phishing"
+            );
+
+        }
+
+        else {
+
+            verdictIcon.textContent =
+                "✓";
+
+            verdictIcon.classList.add(
+                "safe"
+            );
+
+        }
+
+    }
+
+
+    /* Verdict title */
+
+    if (verdictTitle) {
+
+        verdictTitle.textContent =
+            title;
+
+    }
+
+
+    /* Verdict description */
+
+    if (verdictDescription) {
+
+        verdictDescription.textContent =
+            description;
+
+    }
+
+
+    /* Result status */
+
+    if (resultStatus) {
+
+        if (
+            classification === "high_risk"
+        ) {
+
+            resultStatus.textContent =
+                "THREAT DETECTED";
+
+        }
+
+        else if (
+            classification === "suspicious"
+        ) {
+
+            resultStatus.textContent =
+                "SUSPICIOUS";
+
+        }
+
+        else {
+
+            resultStatus.textContent =
+                "SAFE URL";
+
+        }
+
+    }
+
+
+    /* Confidence */
+
+    if (confidenceValue) {
+
+        confidenceValue.textContent =
+            `${confidence}%`;
+
+    }
+
+
+    if (confidenceBar) {
+
+        confidenceBar.style.width =
+            `${confidence}%`;
+
+    }
+
+
+    /* Store normalized values */
+
+    result._frontend = {
+
+        verdict:
+            verdict,
+
+        score:
+            score,
+
+        confidence:
+            confidence
+
+    };
+
+
+    console.log(
+        "PhishGuard: Result displayed."
+    );
 
 }
 
 
 /* ============================================================
-   DISPLAY VERDICT
+   RISK GAUGE
    ============================================================ */
 
-function displayVerdict(
-    prediction,
-    confidence
-) {
+function updateRiskGauge(score) {
 
-    const normalized =
-        String(prediction)
-            .toLowerCase()
-            .trim();
+    if (!riskGauge) {
 
+        return;
 
-    verdictIcon.classList.remove(
-        "safe",
-        "phishing"
-    );
-
-    riskStatus.classList.remove(
-        "safe",
-        "danger",
-        "awaiting"
-    );
+    }
 
 
     if (
-        normalized.includes("phish") ||
-        normalized.includes("malicious") ||
-        normalized.includes("danger")
+        typeof riskGauge.getTotalLength ===
+        "function"
     ) {
 
-        verdictIcon.textContent = "⚠";
+        try {
 
-        verdictIcon.classList.add(
-            "phishing"
-        );
-
-        verdictTitle.textContent =
-            "Phishing Detected";
-
-        verdictDescription.textContent =
-            "The security model has classified this URL as potentially dangerous.";
-
-        riskStatus.textContent =
-            "High Risk";
-
-        riskStatus.classList.add(
-            "danger"
-        );
-
-        resultStatus.textContent =
-            "THREAT DETECTED";
-
-    }
+            const length =
+                riskGauge.getTotalLength();
 
 
-    else if (
-        normalized.includes("safe") ||
-        normalized.includes("legitimate")
-    ) {
+            riskGauge.style.strokeDasharray =
+                length;
 
-        verdictIcon.textContent = "✓";
 
-        verdictIcon.classList.add(
-            "safe"
-        );
+            const offset =
+                length -
+                (
+                    length *
+                    (
+                        score / 100
+                    )
+                );
 
-        verdictTitle.textContent =
-            "URL Appears Safe";
 
-        verdictDescription.textContent =
-            "The security model has classified this URL as low risk.";
+            riskGauge.style.strokeDashoffset =
+                offset;
 
-        riskStatus.textContent =
-            "Low Risk";
+        } catch (error) {
 
-        riskStatus.classList.add(
-            "safe"
-        );
+            console.log(
+                "Risk gauge SVG update skipped."
+            );
 
-        resultStatus.textContent =
-            "SAFE URL";
+        }
 
     }
 
 
-    else {
-
-        verdictIcon.textContent = "?";
-
-        verdictTitle.textContent =
-            prediction;
-
-        verdictDescription.textContent =
-            "The security model returned an analysis result.";
-
-        riskStatus.textContent =
-            "Analyzed";
-
-        resultStatus.textContent =
-            "ANALYZED";
-
-    }
+    riskGauge.style.setProperty(
+        "--risk-score",
+        score
+    );
 
 
-    confidenceValue.textContent =
-        `${confidence}%`;
-
-    confidenceBar.style.width =
-        `${Math.max(0, Math.min(100, confidence))}%`;
-
-
-    riskDescription.textContent =
-        `Model confidence: ${confidence}%`;
+    riskGauge.style.setProperty(
+        "--risk-percent",
+        `${score}%`
+    );
 
 }
 
@@ -663,78 +855,59 @@ function displayFeatures(features) {
 
     updateFeature(
         "featureHttps",
-        features.https,
+        features.uses_https,
         "featureHttpsStatus"
     );
 
 
     updateFeature(
         "featureIP",
-        features.ip_address,
+        features.has_ip_address,
         "featureIPStatus"
     );
 
 
     updateFeature(
         "featureAt",
-        features.at_symbol,
+        features.has_at_symbol,
         "featureAtStatus"
     );
 
 
-    updateFeature(
+    setText(
         "featureShortener",
-        features.url_shortener,
-        "featureShortenerStatus"
+        "Not checked"
     );
 
 
-    if (
-        features.url_length !== undefined
-    ) {
-
-        document.getElementById(
-            "featureLength"
-        ).textContent =
-            features.url_length;
-
-    }
+    setText(
+        "featureShortenerStatus",
+        "—"
+    );
 
 
-    if (
-        features.subdomains !== undefined
-    ) {
-
-        document.getElementById(
-            "featureSubdomains"
-        ).textContent =
-            features.subdomains;
-
-    }
+    setText(
+        "featureLength",
+        features.url_length
+    );
 
 
-    if (
-        features.special_characters !== undefined
-    ) {
-
-        document.getElementById(
-            "featureSpecial"
-        ).textContent =
-            features.special_characters;
-
-    }
+    setText(
+        "featureSubdomains",
+        features.subdomain_count
+    );
 
 
-    if (
-        features.suspicious_keywords !== undefined
-    ) {
+    setText(
+        "featureSpecial",
+        features.special_char_count
+    );
 
-        document.getElementById(
-            "featureKeywords"
-        ).textContent =
-            features.suspicious_keywords;
 
-    }
+    setText(
+        "featureKeywords",
+        features.suspicious_keyword_count
+    );
 
 }
 
@@ -750,10 +923,15 @@ function updateFeature(
 ) {
 
     const valueElement =
-        document.getElementById(valueId);
+        document.getElementById(
+            valueId
+        );
+
 
     const statusElement =
-        document.getElementById(statusId);
+        document.getElementById(
+            statusId
+        );
 
 
     if (!valueElement) {
@@ -763,10 +941,14 @@ function updateFeature(
     }
 
 
-    if (typeof value === "boolean") {
+    if (
+        typeof value === "boolean"
+    ) {
 
         valueElement.textContent =
-            value ? "Detected" : "Not Detected";
+            value
+                ? "Detected"
+                : "Not Detected";
 
 
         if (statusElement) {
@@ -786,7 +968,9 @@ function updateFeature(
                     "detected"
                 );
 
-            } else {
+            }
+
+            else {
 
                 statusElement.textContent =
                     "Secure";
@@ -799,7 +983,9 @@ function updateFeature(
 
         }
 
-    } else {
+    }
+
+    else {
 
         valueElement.textContent =
             value ?? "--";
@@ -810,142 +996,393 @@ function updateFeature(
 
 
 /* ============================================================
-   DISPLAY REASONS
+   TEXT HELPER
    ============================================================ */
 
-function displayReasons(reasons) {
+function setText(
+    id,
+    value
+) {
 
-    reasonList.innerHTML = "";
+    const element =
+        document.getElementById(id);
 
 
-    if (
-        !reasons ||
-        reasons.length === 0
-    ) {
-
-        const item =
-            document.createElement("span");
-
-        item.className =
-            "reason-item";
-
-        item.textContent =
-            "No explanation provided";
-
-        reasonList.appendChild(item);
-
-        explanationTitle.textContent =
-            "Analysis completed";
-
-        explanationText.textContent =
-            "The backend did not provide additional security reasons.";
+    if (!element) {
 
         return;
 
     }
 
 
-    explanationTitle.textContent =
-        "Security factors identified";
+    if (
+        value === undefined ||
+        value === null
+    ) {
+
+        element.textContent =
+            "--";
+
+    }
+
+    else {
+
+        element.textContent =
+            value;
+
+    }
+
+}
 
 
-    explanationText.textContent =
-        "The following factors were returned by the analysis system.";
+/* ============================================================
+   SECURITY REASONS
+   ============================================================ */
+
+function displayReasons(reasons) {
+
+    if (!reasonList) {
+
+        return;
+
+    }
 
 
-    reasons.forEach(reason => {
+    reasonList.innerHTML =
+        "";
+
+
+    if (
+        !Array.isArray(reasons) ||
+        reasons.length === 0
+    ) {
 
         const item =
-            document.createElement("span");
+            document.createElement(
+                "span"
+            );
+
 
         item.className =
             "reason-item";
 
+
         item.textContent =
-            reason;
+            "No additional security factors were returned.";
 
-        reasonList.appendChild(item);
 
-    });
+        reasonList.appendChild(
+            item
+        );
+
+
+        if (explanationTitle) {
+
+            explanationTitle.textContent =
+                "Analysis completed";
+
+        }
+
+
+        if (explanationText) {
+
+            explanationText.textContent =
+                "The backend completed the security analysis.";
+
+        }
+
+
+        return;
+
+    }
+
+
+    if (explanationTitle) {
+
+        explanationTitle.textContent =
+            "Security factors identified";
+
+    }
+
+
+    if (explanationText) {
+
+        explanationText.textContent =
+            "The following factors were returned by the security analysis.";
+
+    }
+
+
+    reasons.forEach(
+        reason => {
+
+            const item =
+                document.createElement(
+                    "span"
+                );
+
+
+            item.className =
+                "reason-item";
+
+
+            item.textContent =
+                reason;
+
+
+            reasonList.appendChild(
+                item
+            );
+
+        }
+    );
 
 }
 
 
 /* ============================================================
-   UPDATE SECURITY REPORT
+   SECURITY REPORT
    ============================================================ */
 
 function updateReport(result) {
 
-    const now =
-        new Date();
+    const frontend =
+        result._frontend || {};
 
 
-    reportUrl.textContent =
-        result.url || "--";
+    const verdict =
+        frontend.verdict ||
+        getVerdict(
+            result.classification
+        );
 
 
-    reportTime.textContent =
-        now.toLocaleString();
+    const score =
+        frontend.score ??
+        Number(
+            result.risk_score || 0
+        );
 
 
-    reportVerdict.textContent =
-        result.prediction || "--";
+    let confidence =
+        frontend.confidence ??
+        Number(
+            result.confidence || 0
+        );
 
 
-    reportRisk.textContent =
-        `${result.risk_score ?? "--"} / 100`;
+    if (
+        confidence <= 1
+    ) {
+
+        confidence *= 100;
+
+    }
 
 
-    reportConfidence.textContent =
-        result.confidence !== undefined
-            ? `${result.confidence}%`
-            : "--";
+    confidence =
+        Math.round(
+            confidence * 100
+        ) / 100;
 
 
-    reportStatus.textContent =
-        "Analysis Complete";
+    setText(
+        "reportUrl",
+        result.url
+    );
 
 
-    reportSummary.textContent =
-        result.summary ||
-        "The security analysis has been completed. See the assessment and feature sections for additional details.";
+    setText(
+        "reportTime",
+        formatDateTime(
+            new Date()
+        )
+    );
+
+
+    setText(
+        "reportVerdict",
+        verdict
+    );
+
+
+    setText(
+        "reportRisk",
+        `${score.toFixed(2)} / 100`
+    );
+
+
+    setText(
+        "reportConfidence",
+        `${confidence}%`
+    );
+
+
+    setText(
+        "reportStatus",
+        "Analysis Complete"
+    );
+
+
+    setText(
+        "reportSummary",
+        createSummary(
+            result,
+            verdict,
+            score
+        )
+    );
 
 }
 
 
 /* ============================================================
-   SCAN HISTORY
+   CREATE SUMMARY
+   ============================================================ */
+
+function createSummary(
+    result,
+    verdict,
+    score
+) {
+
+    if (
+        verdict === "Phishing"
+    ) {
+
+        return (
+            `The URL was classified as high risk with a ` +
+            `risk score of ${score.toFixed(2)} out of 100. ` +
+            `The assessment combines machine-learning evidence ` +
+            `with DNS, SSL, and URL security checks.`
+        );
+
+    }
+
+
+    if (
+        verdict === "Suspicious"
+    ) {
+
+        return (
+            `The URL was classified as suspicious with a ` +
+            `risk score of ${score.toFixed(2)} out of 100. ` +
+            `The assessment combines machine-learning evidence ` +
+            `with DNS, SSL, and URL security checks.`
+        );
+
+    }
+
+
+    return (
+        `The URL received a low-risk assessment with a ` +
+        `risk score of ${score.toFixed(2)} out of 100. ` +
+        `The assessment combines machine-learning evidence ` +
+        `with DNS, SSL, and URL security checks.`
+    );
+
+}
+
+
+/* ============================================================
+   GET VERDICT
+   ============================================================ */
+
+function getVerdict(
+    classification
+) {
+
+    const value =
+        String(
+            classification || ""
+        ).toLowerCase();
+
+
+    if (
+        value === "high_risk" ||
+        value === "phishing" ||
+        value === "malicious"
+    ) {
+
+        return "Phishing";
+
+    }
+
+
+    if (
+        value === "suspicious"
+    ) {
+
+        return "Suspicious";
+
+    }
+
+
+    return "Safe";
+
+}
+
+
+/* ============================================================
+   HISTORY
    ============================================================ */
 
 function addToHistory(result) {
 
+    const verdict =
+        getVerdict(
+            result.classification
+        );
+
+
     const entry = {
 
-        id: Date.now(),
+        id:
+            Date.now(),
 
         url:
             result.url || "--",
 
         time:
-            new Date().toLocaleString(),
+            formatDateTime(
+                new Date()
+            ),
 
         risk:
-            result.risk_score ?? "--",
+            Number(
+                result.risk_score || 0
+            ),
 
         verdict:
-            result.prediction || "Unknown"
+            verdict
 
     };
 
 
-    scanHistory.unshift(entry);
+    scanHistory =
+        scanHistory.filter(
+            item =>
+                !(
+                    item.url === entry.url &&
+                    item.time === entry.time
+                )
+        );
 
 
-    if (scanHistory.length > 50) {
+    scanHistory.unshift(
+        entry
+    );
+
+
+    if (
+        scanHistory.length > 50
+    ) {
 
         scanHistory =
-            scanHistory.slice(0, 50);
+            scanHistory.slice(
+                0,
+                50
+            );
 
     }
 
@@ -953,6 +1390,8 @@ function addToHistory(result) {
     saveHistory();
 
     renderHistory();
+
+    updateClearButton();
 
 }
 
@@ -963,65 +1402,81 @@ function addToHistory(result) {
 
 function renderHistory() {
 
-    historyTableBody.innerHTML = "";
+    if (!historyTableBody) {
+
+        return;
+
+    }
+
+
+    historyTableBody.innerHTML =
+        "";
 
 
     let filtered =
         scanHistory;
 
 
-    if (currentFilter !== "all") {
+    if (
+        currentFilter !== "all"
+    ) {
 
         filtered =
-            scanHistory.filter(item => {
+            scanHistory.filter(
+                item => {
 
-                const verdict =
-                    item.verdict
-                        .toLowerCase();
+                    const verdict =
+                        String(
+                            item.verdict || ""
+                        ).toLowerCase();
 
 
-                if (
-                    currentFilter === "safe"
-                ) {
+                    if (
+                        currentFilter === "safe"
+                    ) {
 
-                    return (
-                        verdict.includes("safe") ||
-                        verdict.includes("legitimate")
-                    );
+                        return (
+                            verdict === "safe" ||
+                            verdict === "legitimate"
+                        );
+
+                    }
+
+
+                    if (
+                        currentFilter === "phishing"
+                    ) {
+
+                        return (
+                            verdict === "phishing" ||
+                            verdict === "suspicious"
+                        );
+
+                    }
+
+
+                    return true;
 
                 }
-
-
-                if (
-                    currentFilter === "phishing"
-                ) {
-
-                    return (
-                        verdict.includes("phish") ||
-                        verdict.includes("malicious") ||
-                        verdict.includes("danger")
-                    );
-
-                }
-
-
-                return true;
-
-            });
+            );
 
     }
 
 
-    if (filtered.length === 0) {
+    if (
+        filtered.length === 0
+    ) {
 
         const row =
-            document.createElement("tr");
+            document.createElement(
+                "tr"
+            );
 
 
         row.innerHTML = `
             <td colspan="5">
                 <div class="empty-history">
-                    <div class="empty-history-icon">◷</div>
+                    <div class="empty-history-icon">◇</div>
                     <strong>No scans found</strong>
                     <span>
                         Analyze a URL to create your scan history.
@@ -1031,87 +1486,116 @@ function renderHistory() {
         `;
 
 
-        historyTableBody.appendChild(row);
+        historyTableBody.appendChild(
+            row
+        );
+
 
         return;
 
     }
 
 
-    filtered.forEach(item => {
+    filtered.forEach(
+        item => {
 
-        const row =
-            document.createElement("tr");
-
-
-        const verdict =
-            item.verdict.toLowerCase();
-
-
-        let badgeClass =
-            "pending";
+            const row =
+                document.createElement(
+                    "tr"
+                );
 
 
-        if (
-            verdict.includes("safe") ||
-            verdict.includes("legitimate")
-        ) {
+            const verdict =
+                String(
+                    item.verdict || "Unknown"
+                );
 
-            badgeClass =
-                "safe";
+
+            const lowerVerdict =
+                verdict.toLowerCase();
+
+
+            let badgeClass =
+                "pending";
+
+
+            if (
+                lowerVerdict === "safe" ||
+                lowerVerdict === "legitimate"
+            ) {
+
+                badgeClass =
+                    "safe";
+
+            }
+
+            else if (
+                lowerVerdict === "phishing" ||
+                lowerVerdict === "suspicious"
+            ) {
+
+                badgeClass =
+                    "phishing";
+
+            }
+
+
+            const risk =
+                Number(
+                    item.risk
+                );
+
+
+            const riskText =
+                Number.isNaN(risk)
+                    ? "--"
+                    : risk.toFixed(2);
+
+
+            row.innerHTML = `
+
+                <td>
+                    <div
+                        class="history-url"
+                        title="${escapeHTML(item.url)}"
+                    >
+                        ${escapeHTML(item.url)}
+                    </div>
+                </td>
+
+                <td>
+                    ${escapeHTML(item.time)}
+                </td>
+
+                <td>
+                    ${riskText}/100
+                </td>
+
+                <td>
+                    <span
+                        class="history-badge ${badgeClass}"
+                    >
+                        ${escapeHTML(verdict)}
+                    </span>
+                </td>
+
+                <td>
+                    <span
+                        class="history-badge ${badgeClass}"
+                    >
+                        Complete
+                    </span>
+                </td>
+
+            `;
+
+
+            historyTableBody.appendChild(
+                row
+            );
 
         }
-
-
-        if (
-            verdict.includes("phish") ||
-            verdict.includes("malicious") ||
-            verdict.includes("danger")
-        ) {
-
-            badgeClass =
-                "phishing";
-
-        }
-
-
-        row.innerHTML = `
-
-            <td>
-                <div class="history-url"
-                     title="${escapeHTML(item.url)}">
-                    ${escapeHTML(item.url)}
-                </div>
-            </td>
-
-            <td>
-                ${escapeHTML(item.time)}
-            </td>
-
-            <td>
-                ${escapeHTML(String(item.risk))}/100
-            </td>
-
-            <td>
-                <span class="history-badge ${badgeClass}">
-                    ${escapeHTML(item.verdict)}
-                </span>
-            </td>
-
-            <td>
-                <span class="history-badge ${badgeClass}">
-                    ${badgeClass === "pending"
-                        ? "Pending"
-                        : "Complete"}
-                </span>
-            </td>
-
-        `;
-
-
-        historyTableBody.appendChild(row);
-
-    });
+    );
 
 }
 
@@ -1122,13 +1606,30 @@ function renderHistory() {
 
 function saveHistory() {
 
-    localStorage.setItem(
-        "phishguardHistory",
-        JSON.stringify(scanHistory)
-    );
+    try {
+
+        localStorage.setItem(
+            "phishguardHistory",
+            JSON.stringify(
+                scanHistory
+            )
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Could not save history:",
+            error
+        );
+
+    }
 
 }
 
+
+/* ============================================================
+   LOAD HISTORY
+   ============================================================ */
 
 function loadHistory() {
 
@@ -1140,14 +1641,67 @@ function loadHistory() {
             );
 
 
-        if (stored) {
+        if (!stored) {
+
+            scanHistory = [];
+
+            return;
+
+        }
+
+
+        const parsed =
+            JSON.parse(
+                stored
+            );
+
+
+        if (
+            Array.isArray(parsed)
+        ) {
 
             scanHistory =
-                JSON.parse(stored);
+                parsed.map(
+                    item => ({
+
+                        id:
+                            item.id ||
+                            Date.now(),
+
+                        url:
+                            item.url ||
+                            "--",
+
+                        time:
+                            item.time ||
+                            "--",
+
+                        risk:
+                            item.risk ??
+                            "--",
+
+                        verdict:
+                            item.verdict ||
+                            "Unknown"
+
+                    })
+                );
+
+        }
+
+        else {
+
+            scanHistory = [];
 
         }
 
     } catch (error) {
+
+        console.error(
+            "Could not load history:",
+            error
+        );
+
 
         scanHistory = [];
 
@@ -1157,130 +1711,417 @@ function loadHistory() {
 
 
 /* ============================================================
-   CLEAR HISTORY
+   HISTORY CONTROLS
    ============================================================ */
 
-clearHistoryBtn.addEventListener(
-    "click",
-    () => {
+function setupHistoryControls() {
 
-        if (scanHistory.length === 0) {
+    if (clearHistoryBtn) {
 
-            return;
-
-        }
-
-
-        const confirmed =
-            confirm(
-                "Are you sure you want to clear all scan history?"
-            );
-
-
-        if (!confirmed) {
-
-            return;
-
-        }
-
-
-        scanHistory = [];
-
-        saveHistory();
-
-        renderHistory();
+        clearHistoryBtn.addEventListener(
+            "click",
+            clearHistory
+        );
 
     }
-);
 
 
-/* ============================================================
-   HISTORY FILTER
-   ============================================================ */
+    filterButtons.forEach(
+        button => {
 
-filterButtons.forEach(button => {
+            button.addEventListener(
+                "click",
+                () => {
 
-    button.addEventListener(
-        "click",
-        () => {
+                    filterButtons.forEach(
+                        btn => {
 
-            filterButtons.forEach(btn => {
+                            btn.classList.remove(
+                                "active"
+                            );
 
-                btn.classList.remove(
-                    "active"
-                );
-
-            });
+                        }
+                    );
 
 
-            button.classList.add(
-                "active"
+                    button.classList.add(
+                        "active"
+                    );
+
+
+                    currentFilter =
+                        button.dataset.filter ||
+                        "all";
+
+
+                    renderHistory();
+
+                }
             );
-
-
-            currentFilter =
-                button.dataset.filter;
-
-
-            renderHistory();
 
         }
     );
 
-});
+}
+
+
+/* ============================================================
+   CLEAR HISTORY
+   ============================================================ */
+
+function clearHistory() {
+
+    if (
+        scanHistory.length === 0
+    ) {
+
+        return;
+
+    }
+
+
+    const confirmed =
+        confirm(
+            "Are you sure you want to clear all scan history?"
+        );
+
+
+    if (!confirmed) {
+
+        return;
+
+    }
+
+
+    scanHistory = [];
+
+    saveHistory();
+
+    renderHistory();
+
+    updateClearButton();
+
+}
+
+
+/* ============================================================
+   CLEAR BUTTON STATE
+   ============================================================ */
+
+function updateClearButton() {
+
+    if (!clearHistoryBtn) {
+
+        return;
+
+    }
+
+
+    clearHistoryBtn.disabled =
+        scanHistory.length === 0;
+
+}
 
 
 /* ============================================================
    SCAN AGAIN
    ============================================================ */
 
-scanAgainBtn.addEventListener(
-    "click",
-    () => {
+function setupScanAgainButton() {
 
-        document
-            .getElementById("scanner")
-            .scrollIntoView({
-                behavior: "smooth"
-            });
+    if (!scanAgainBtn) {
 
-
-        setTimeout(() => {
-
-            urlInput.focus();
-
-        }, 500);
+        return;
 
     }
-);
+
+
+    scanAgainBtn.addEventListener(
+        "click",
+        () => {
+
+            const scanner =
+                document.getElementById(
+                    "scanner"
+                );
+
+
+            if (scanner) {
+
+                scanner.scrollIntoView({
+                    behavior: "smooth"
+                });
+
+            }
+
+
+            setTimeout(
+                () => {
+
+                    if (urlInput) {
+
+                        urlInput.focus();
+
+                    }
+
+                },
+                500
+            );
+
+        }
+    );
+
+}
 
 
 /* ============================================================
    PRINT REPORT
    ============================================================ */
 
-printReportBtn.addEventListener(
-    "click",
-    () => {
+function setupReportButton() {
 
-        window.print();
+    if (!printReportBtn) {
+
+        return;
 
     }
-);
+
+
+    printReportBtn.addEventListener(
+        "click",
+        () => {
+
+            window.print();
+
+        }
+    );
+
+}
+
+
+/* ============================================================
+   SCANNER LOADING STATE
+   ============================================================ */
+
+function setLoadingState(
+    loading
+) {
+
+    if (analyzeBtn) {
+
+        analyzeBtn.disabled =
+            loading;
+
+    }
+
+
+    if (analyzeText) {
+
+        analyzeText.textContent =
+            loading
+                ? "Analyzing..."
+                : "Analyze URL";
+
+    }
+
+
+    if (analyzeArrow) {
+
+        analyzeArrow.style.opacity =
+            loading
+                ? "0.5"
+                : "1";
+
+    }
+
+
+    if (scanLoading) {
+
+        scanLoading.style.display =
+            loading
+                ? "block"
+                : "none";
+
+    }
+
+}
+
+
+/* ============================================================
+   SCANNER MESSAGE
+   ============================================================ */
+
+function showScannerMessage(
+    message
+) {
+
+    if (scannerMessage) {
+
+        scannerMessage.style.display =
+            "block";
+
+    }
+
+
+    if (scannerMessageText) {
+
+        scannerMessageText.textContent =
+            message;
+
+    }
+
+}
+
+
+/* ============================================================
+   HIDE SCANNER MESSAGE
+   ============================================================ */
+
+function hideScannerMessage() {
+
+    if (scannerMessage) {
+
+        scannerMessage.style.display =
+            "none";
+
+    }
+
+}
+
+
+/* ============================================================
+   SCROLL TO RESULT
+   ============================================================ */
+
+function scrollToResult() {
+
+    const possibleSections = [
+
+        document.getElementById(
+            "result"
+        ),
+
+        document.getElementById(
+            "assessment"
+        ),
+
+        document.getElementById(
+            "features"
+        )
+
+    ];
+
+
+    const target =
+        possibleSections.find(
+            element => element
+        );
+
+
+    if (target) {
+
+        setTimeout(
+            () => {
+
+                target.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start"
+                });
+
+            },
+            300
+        );
+
+    }
+
+}
 
 
 /* ============================================================
    NAVIGATION
    ============================================================ */
 
-function updateNavigation() {
+function setupNavigation() {
+
+    navItems.forEach(
+        item => {
+
+            item.addEventListener(
+                "click",
+                event => {
+
+                    const href =
+                        item.getAttribute(
+                            "href"
+                        );
+
+
+                    if (
+                        href &&
+                        href.startsWith("#")
+                    ) {
+
+                        const target =
+                            document.querySelector(
+                                href
+                            );
+
+
+                        if (target) {
+
+                            event.preventDefault();
+
+
+                            target.scrollIntoView({
+                                behavior: "smooth"
+                            });
+
+                        }
+
+                    }
+
+
+                    navItems.forEach(
+                        nav => {
+
+                            nav.classList.remove(
+                                "active"
+                            );
+
+                        }
+                    );
+
+
+                    item.classList.add(
+                        "active"
+                    );
+
+                }
+            );
+
+        }
+    );
+
+
+    updateNavigationOnScroll();
+
+}
+
+
+/* ============================================================
+   NAVIGATION ON SCROLL
+   ============================================================ */
+
+function updateNavigationOnScroll() {
 
     const sections = [
+
         "dashboard",
         "scanner",
         "history",
         "features",
         "report"
+
     ];
 
 
@@ -1292,157 +2133,530 @@ function updateNavigation() {
                 "dashboard";
 
 
-            sections.forEach(id => {
+            sections.forEach(
+                id => {
 
-                const section =
-                    document.getElementById(id);
+                    const section =
+                        document.getElementById(
+                            id
+                        );
 
 
-                if (!section) {
+                    if (!section) {
 
-                    return;
+                        return;
+
+                    }
+
+
+                    const top =
+                        section.getBoundingClientRect()
+                            .top;
+
+
+                    if (
+                        top <= 160 &&
+                        top >= -500
+                    ) {
+
+                        current =
+                            id;
+
+                    }
 
                 }
+            );
 
 
-                const position =
-                    section.getBoundingClientRect()
-                        .top;
+            navItems.forEach(
+                item => {
+
+                    const href =
+                        item.getAttribute(
+                            "href"
+                        );
 
 
-                if (
-                    position <= 150 &&
-                    position >= -500
-                ) {
-
-                    current = id;
-
-                }
-
-            });
-
-
-            navItems.forEach(item => {
-
-                item.classList.remove(
-                    "active"
-                );
-
-
-                const href =
-                    item.getAttribute("href");
-
-
-                if (
-                    href === `#${current}`
-                ) {
-
-                    item.classList.add(
+                    item.classList.remove(
                         "active"
                     );
 
+
+                    if (
+                        href ===
+                        `#${current}`
+                    ) {
+
+                        item.classList.add(
+                            "active"
+                        );
+
+                    }
+
                 }
-
-            });
-
-        }
-    );
-
-}
-
-
-/* ============================================================
-   NAVIGATION CLICK
-   ============================================================ */
-
-navItems.forEach(item => {
-
-    item.addEventListener(
-        "click",
-        () => {
-
-            navItems.forEach(nav => {
-
-                nav.classList.remove(
-                    "active"
-                );
-
-            });
-
-
-            item.classList.add(
-                "active"
             );
 
         }
     );
 
-});
+}
 
 
 /* ============================================================
    HTML ESCAPE
    ============================================================ */
 
-function escapeHTML(value) {
+function escapeHTML(
+    value
+) {
 
-    return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
+    return String(
+        value ?? ""
+    )
+        .replaceAll(
+            "&",
+            "&amp;"
+        )
+        .replaceAll(
+            "<",
+            "&lt;"
+        )
+        .replaceAll(
+            ">",
+            "&gt;"
+        )
+        .replaceAll(
+            '"',
+            "&quot;"
+        )
+        .replaceAll(
+            "'",
+            "&#039;"
+        );
 
 }
 
 
 /* ============================================================
-   FUTURE API ADAPTER
+   DATE / TIME FORMAT
    ============================================================ */
 
-/*
-    When Raj gives you the actual Flask endpoint,
-    only this area needs to be connected.
+function formatDateTime(
+    date
+) {
 
-    Example:
+    return new Intl.DateTimeFormat(
+        "en-IN",
+        {
+            day: "2-digit",
+            month: "long",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: true
+        }
+    ).format(date);
 
-    async function analyzeWithBackend(url) {
+}
 
-        const response = await fetch("/api/analyze", {
-            method: "POST",
 
-            headers: {
-                "Content-Type": "application/json"
-            },
+/* ============================================================
+   BACKEND CONNECTION TEST
+   ============================================================ */
 
-            body: JSON.stringify({
-                url: url
-            })
-        });
+async function checkBackendConnection() {
+
+    try {
+
+        const response =
+            await fetch(
+                `${API_BASE_URL}/`
+            );
 
 
         if (!response.ok) {
-            throw new Error("Server error");
+
+            return false;
+
         }
 
 
-        const result =
+        const data =
             await response.json();
 
 
-        return result;
+        console.log(
+            "PhishGuard backend:",
+            data.message
+        );
+
+
+        return true;
+
+    } catch (error) {
+
+        console.error(
+            "PhishGuard backend unavailable:",
+            error
+        );
+
+
+        return false;
+
     }
 
-    Then analyzeURL() can call:
-
-    const result =
-        await analyzeWithBackend(url);
-
-    displayResult(result);
-
-*/
+}
 
 
-console.log(
-    "PhishGuard frontend loaded successfully."
+/* ============================================================
+   BACKEND HISTORY
+   ============================================================ */
+
+async function loadBackendHistory() {
+
+    try {
+
+        const response =
+            await fetch(
+                `${API_BASE_URL}/api/v1/history`
+            );
+
+
+        if (!response.ok) {
+
+            return;
+
+        }
+
+
+        const backendHistory =
+            await response.json();
+
+
+        if (
+            !Array.isArray(
+                backendHistory
+            )
+        ) {
+
+            return;
+
+        }
+
+
+        const converted =
+            backendHistory.map(
+                item => ({
+
+                    id:
+                        item.id,
+
+                    url:
+                        item.url,
+
+                    time:
+                        formatBackendDate(
+                            item.scan_time
+                        ),
+
+                    risk:
+                        item.risk_score,
+
+                    verdict:
+                        getVerdict(
+                            item.classification
+                        )
+
+                })
+            );
+
+
+        scanHistory =
+            converted.slice(
+                0,
+                50
+            );
+
+
+        saveHistory();
+
+        renderHistory();
+
+        updateClearButton();
+
+
+        console.log(
+            "PhishGuard: Backend history loaded.",
+            scanHistory
+        );
+
+
+    } catch (error) {
+
+        console.log(
+            "Backend history unavailable. Using local history."
+        );
+
+    }
+
+}
+
+
+/* ============================================================
+   FORMAT BACKEND TIMESTAMP
+   ============================================================ */
+
+function formatBackendDate(
+    value
+) {
+
+    if (!value) {
+
+        return "--";
+
+    }
+
+
+    /*
+     * SQLite CURRENT_TIMESTAMP is UTC.
+     * Add Z so JavaScript interprets it
+     * correctly and converts it to local time.
+     */
+
+    let dateString =
+        String(value);
+
+
+    if (
+        !dateString.endsWith("Z")
+    ) {
+
+        dateString =
+            dateString.replace(
+                " ",
+                "T"
+            ) + "Z";
+
+    }
+
+
+    const date =
+        new Date(
+            dateString
+        );
+
+
+    if (
+        Number.isNaN(
+            date.getTime()
+        )
+    ) {
+
+        return value;
+
+    }
+
+
+    return formatDateTime(
+        date
+    );
+
+}
+
+
+/* ============================================================
+   DASHBOARD STATISTICS
+   ============================================================ */
+
+async function updateDashboardStats() {
+
+    try {
+
+        const response =
+            await fetch(
+                `${API_BASE_URL}/api/v1/history`
+            );
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                "Could not load scan history."
+            );
+
+        }
+
+
+        const history =
+            await response.json();
+
+
+        if (
+            !Array.isArray(history)
+        ) {
+
+            return;
+
+        }
+
+
+        const total =
+            history.length;
+
+
+        const threats =
+            history.filter(
+                item => {
+
+                    const classification =
+                        String(
+                            item.classification || ""
+                        ).toLowerCase();
+
+
+                    return (
+                        classification === "high_risk" ||
+                        classification === "phishing" ||
+                        classification === "malicious"
+                    );
+
+                }
+            ).length;
+
+
+        const safe =
+            history.filter(
+                item => {
+
+                    const classification =
+                        String(
+                            item.classification || ""
+                        ).toLowerCase();
+
+
+                    return (
+                        classification === "low_risk" ||
+                        classification === "legitimate" ||
+                        classification === "safe"
+                    );
+
+                }
+            ).length;
+
+
+        /*
+         * IMPORTANT:
+         *
+         * These IDs must match the IDs in index.html.
+         */
+
+        const totalElement =
+            document.getElementById(
+                "totalScans"
+            );
+
+
+        const threatsElement =
+            document.getElementById(
+                "threatsDetected"
+            );
+
+
+        const safeElement =
+            document.getElementById(
+                "safeUrls"
+            );
+
+
+        if (totalElement) {
+
+            totalElement.textContent =
+                total;
+
+        }
+
+
+        if (threatsElement) {
+
+            threatsElement.textContent =
+                threats;
+
+        }
+
+
+        if (safeElement) {
+
+            safeElement.textContent =
+                safe;
+
+        }
+
+
+        console.log(
+            "PhishGuard dashboard statistics:",
+            {
+                total,
+                threats,
+                safe
+            }
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Dashboard statistics error:",
+            error
+        );
+
+    }
+
+}
+
+
+/* ============================================================
+   BACKEND STARTUP
+   ============================================================ */
+
+window.addEventListener(
+    "load",
+    async () => {
+
+        const connected =
+            await checkBackendConnection();
+
+
+        if (connected) {
+
+            console.log(
+                "PhishGuard: Backend connection successful."
+            );
+
+
+            await loadBackendHistory();
+
+
+            /*
+             * Refresh dashboard after
+             * loading database history.
+             */
+
+            await updateDashboardStats();
+
+        }
+
+        else {
+
+            console.warn(
+                "PhishGuard: Backend is not currently available."
+            );
+
+        }
+
+    }
 );
+
+
+/* ============================================================
+   END OF PHISHGUARD FRONTEND
+   ============================================================ */

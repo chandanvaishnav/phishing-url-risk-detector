@@ -1,6 +1,7 @@
 import json
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 
 from backend.database import init_db, get_connection
@@ -17,6 +18,16 @@ app = FastAPI(
     title="Phishing URL Risk Detector API",
     description="Backend API for detecting suspicious and phishing URLs.",
     version="1.0.0"
+)
+
+
+# Allow the frontend to communicate with the FastAPI backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
