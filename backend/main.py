@@ -8,6 +8,9 @@ from backend.utils.url_validator import validate_url
 from backend.security.dns_checker import check_dns
 from backend.security.ssl_checker import check_ssl
 from backend.security.url_security import check_url_security
+from backend.risk_engine import calculate_risk
+
+from app.ml.ml_service import analyze_url
 
 
 app = FastAPI(
@@ -62,13 +65,31 @@ def scan_url(request: URLRequest):
         ssl_result = check_ssl(domain)
         url_security_result = check_url_security(url)
 
-        # Create scan result
+        # ML analysis
+        ml_result = analyze_url(url)
+
+        # Risk Engine
+        risk_result = calculate_risk(
+            ml_prediction=ml_result["classification"],
+            ml_probability=ml_result["phishing_probability"],
+            ml_confidence=ml_result["confidence"],
+            dns_resolves=dns_result["resolves"],
+            ssl_valid=ssl_result["valid"],
+            url_security=url_security_result
+        )
+
+        # Create final scan result
         result = {
             "url": url,
             "valid": is_valid,
+            "classification": risk_result["classification"],
+            "risk_score": risk_result["risk_score"],
+            "confidence": risk_result["confidence"],
+            "ml": ml_result,
             "dns": dns_result,
             "ssl": ssl_result,
             "url_security": url_security_result,
+            "risk_engine": risk_result,
             "message": "URL scanned successfully"
         }
 
@@ -77,11 +98,20 @@ def scan_url(request: URLRequest):
 
         connection.execute(
             """
-            INSERT INTO scan_history (url, result_json)
-            VALUES (?, ?)
+            INSERT INTO scan_history (
+                url,
+                classification,
+                risk_score,
+                confidence,
+                result_json
+            )
+            VALUES (?, ?, ?, ?, ?)
             """,
             (
                 url,
+                risk_result["classification"],
+                risk_result["risk_score"],
+                risk_result["confidence"],
                 json.dumps(result)
             )
         )
