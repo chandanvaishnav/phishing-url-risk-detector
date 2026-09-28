@@ -7,150 +7,171 @@ def calculate_risk(
     url_security: dict
 ) -> dict:
     """
-    Calculate final phishing risk using a hybrid scoring model.
+    Calculate the final hybrid phishing risk score.
 
-    Weight distribution:
-        ML evidence       = 60 points
-        DNS evidence      = 10 points
-        SSL evidence      = 10 points
-        URL security      = 20 points
+    Score allocation:
+        ML              = 60 points
+        URL Security    = 20 points
+        DNS             = 10 points
+        SSL             = 10 points
 
-    Final risk score:
-        0   = lowest risk
-        100 = highest risk
-
-    Confidence:
-        Uses the ML service confidence for consistency
-        with the project's ML evidence.
+    Maximum total score = 100.
     """
 
-    explanation = []
+    ml_probability = max(
+        0.0,
+        min(1.0, float(ml_probability))
+    )
+
+    ml_confidence = max(
+        0.0,
+        min(1.0, float(ml_confidence))
+    )
 
     # --------------------------------------------------
-    # 1. ML SCORE - 60 points
+    # 1. ML SCORE (maximum 60 points)
     # --------------------------------------------------
 
     ml_score = ml_probability * 60
 
-    if ml_prediction == "phishing":
-        explanation.append(
-            "ML model detected a high phishing probability."
-        )
-    else:
-        explanation.append(
-            "ML model did not classify the URL as phishing "
-            "at the configured threshold."
-        )
-
     # --------------------------------------------------
-    # 2. DNS SCORE - 10 points
+    # 2. URL SECURITY SCORE (maximum 20 points)
     # --------------------------------------------------
 
-    if dns_resolves:
-        dns_score = 0
-        explanation.append(
-            "Domain successfully resolves through DNS."
-        )
-    else:
-        dns_score = 10
-        explanation.append(
-            "Domain could not be resolved through DNS."
-        )
+    url_security_score = 0
+    url_security_reasons = []
 
-    # --------------------------------------------------
-    # 3. SSL SCORE - 10 points
-    # --------------------------------------------------
+    if url_security.get("has_ip_address", False):
+        url_security_score += 5
+        url_security_reasons.append("IP-based domain")
 
-    if ssl_valid:
-        ssl_score = 0
-        explanation.append(
-            "SSL certificate verification succeeded."
-        )
-    else:
-        ssl_score = 10
-        explanation.append(
-            "SSL certificate verification failed."
-        )
+    if url_security.get("has_at_symbol", False):
+        url_security_score += 4
+        url_security_reasons.append("URL contains an @ symbol")
 
-    # --------------------------------------------------
-    # 4. URL SECURITY SCORE - 20 points
-    # --------------------------------------------------
-
-    url_score = 0
-
-    if url_security.get("has_ip_address"):
-        url_score += 5
-        explanation.append(
-            "URL uses an IP address instead of a normal domain."
-        )
-
-    if url_security.get("has_at_symbol"):
-        url_score += 5
-        explanation.append(
-            "URL contains an @ symbol."
-        )
-
-    if url_security.get("has_suspicious_symbol"):
-        url_score += 3
-        explanation.append(
-            "URL contains a potentially suspicious symbol."
-        )
-
-    if url_security.get("suspicious_keyword_count", 0) > 0:
-        url_score += 3
-        explanation.append(
-            "URL contains security-related keywords."
-        )
-
-    if url_security.get("has_encoded_characters"):
-        url_score += 2
-        explanation.append(
-            "URL contains encoded characters."
+    if url_security.get("has_encoded_characters", False):
+        url_security_score += 4
+        url_security_reasons.append(
+            "URL contains encoded characters"
         )
 
     if url_security.get("subdomain_count", 0) >= 3:
-        url_score += 2
-        explanation.append(
-            "URL contains multiple subdomain levels."
+        url_security_score += 2
+        url_security_reasons.append(
+            "URL contains 3 or more subdomains"
         )
 
-    # Keep URL security contribution within its 20-point limit.
-    url_score = min(url_score, 20)
+    if url_security.get("suspicious_keyword_count", 0) > 0:
+        url_security_score += 2
+        url_security_reasons.append(
+            "URL contains suspicious keywords"
+        )
+
+    if url_security.get("url_length", 0) >= 100:
+        url_security_score += 1
+        url_security_reasons.append(
+            "URL is unusually long"
+        )
+
+    if url_security.get("digit_count", 0) >= 5:
+        url_security_score += 1
+        url_security_reasons.append(
+            "URL contains many digits"
+        )
+
+    url_security_score = min(url_security_score, 20)
 
     # --------------------------------------------------
-    # FINAL SCORE
+    # 3. DNS SCORE (maximum 10 points)
     # --------------------------------------------------
 
-    risk_score = ml_score + dns_score + ssl_score + url_score
+    dns_score = 0
 
-    risk_score = round(
-        min(max(risk_score, 0), 100),
-        2
+    if not dns_resolves:
+        dns_score = 10
+
+    # --------------------------------------------------
+    # 4. SSL SCORE (maximum 10 points)
+    # --------------------------------------------------
+
+    ssl_score = 0
+
+    if not ssl_valid:
+        ssl_score = 10
+
+    # --------------------------------------------------
+    # 5. FINAL HYBRID SCORE
+    # --------------------------------------------------
+
+    risk_score = (
+        ml_score
+        + url_security_score
+        + dns_score
+        + ssl_score
     )
 
+    risk_score = min(max(risk_score, 0), 100)
+
     # --------------------------------------------------
-    # FINAL CLASSIFICATION
+    # 6. FINAL RISK CLASSIFICATION
     # --------------------------------------------------
 
-    if risk_score >= 70:
+    if risk_score >= 60:
         classification = "high_risk"
-    elif risk_score >= 40:
-        classification = "suspicious"
+    elif risk_score >= 30:
+        classification = "medium_risk"
     else:
         classification = "low_risk"
 
     # --------------------------------------------------
-    # CONFIDENCE
+    # 7. EXPLANATION
     # --------------------------------------------------
 
-    confidence = round(
-        ml_confidence,
-        6
-    )
+    explanation = []
+
+    if ml_score > 0:
+        explanation.append(
+            f"ML contributed {ml_score:.2f}/60 points."
+        )
+
+    if url_security_reasons:
+        explanation.append(
+            "URL security indicators: "
+            + ", ".join(url_security_reasons)
+            + "."
+        )
+
+    if dns_score > 0:
+        explanation.append(
+            "DNS resolution failed, adding 10 risk points."
+        )
+
+    if ssl_score > 0:
+        explanation.append(
+            "SSL validation failed, adding 10 risk points."
+        )
+
+    if not explanation:
+        explanation.append(
+            "No significant risk indicators were detected."
+        )
 
     return {
         "classification": classification,
-        "risk_score": risk_score,
-        "confidence": confidence,
+        "risk_score": round(risk_score, 2),
+
+        # Confidence represents confidence in the
+        # selected ML classification.
+        "confidence": round(ml_confidence, 6),
+
+        "score_breakdown": {
+            "ml": round(ml_score, 2),
+            "url_security": url_security_score,
+            "dns": dns_score,
+            "ssl": ssl_score
+        },
+
+        "url_security_reasons": url_security_reasons,
+
         "explanation": explanation
     }

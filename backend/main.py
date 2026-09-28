@@ -10,7 +10,6 @@ from backend.security.dns_checker import check_dns
 from backend.security.ssl_checker import check_ssl
 from backend.security.url_security import check_url_security
 from backend.risk_engine import calculate_risk
-
 from app.ml.ml_service import analyze_url
 
 
@@ -48,12 +47,13 @@ def home():
 
 @app.post("/api/v1/scan")
 def scan_url(request: URLRequest):
-
     try:
-        # Convert URL to string
+        # --------------------------------------------------
+        # 1. URL VALIDATION
+        # --------------------------------------------------
+
         url = str(request.url)
 
-        # Validate URL
         is_valid = validate_url(url)
 
         if not is_valid:
@@ -62,7 +62,10 @@ def scan_url(request: URLRequest):
                 detail="Invalid URL"
             )
 
-        # Get domain
+        # --------------------------------------------------
+        # 2. EXTRACT DOMAIN
+        # --------------------------------------------------
+
         domain = request.url.host
 
         if not domain:
@@ -71,15 +74,34 @@ def scan_url(request: URLRequest):
                 detail="Could not extract domain from URL"
             )
 
-        # Security checks
+        # --------------------------------------------------
+        # 3. DNS CHECK
+        # --------------------------------------------------
+
         dns_result = check_dns(domain)
+
+        # --------------------------------------------------
+        # 4. SSL CHECK
+        # --------------------------------------------------
+
         ssl_result = check_ssl(domain)
+
+        # --------------------------------------------------
+        # 5. URL SECURITY ANALYSIS
+        # --------------------------------------------------
+
         url_security_result = check_url_security(url)
 
-        # ML analysis
+        # --------------------------------------------------
+        # 6. MACHINE LEARNING ANALYSIS
+        # --------------------------------------------------
+
         ml_result = analyze_url(url)
 
-        # Risk Engine
+        # --------------------------------------------------
+        # 7. HYBRID RISK ENGINE
+        # --------------------------------------------------
+
         risk_result = calculate_risk(
             ml_prediction=ml_result["classification"],
             ml_probability=ml_result["phishing_probability"],
@@ -89,22 +111,32 @@ def scan_url(request: URLRequest):
             url_security=url_security_result
         )
 
-        # Create final scan result
+        # --------------------------------------------------
+        # 8. FINAL RESPONSE
+        # --------------------------------------------------
+
         result = {
             "url": url,
             "valid": is_valid,
             "classification": risk_result["classification"],
             "risk_score": risk_result["risk_score"],
             "confidence": risk_result["confidence"],
+            "score_breakdown": risk_result["score_breakdown"],
             "ml": ml_result,
             "dns": dns_result,
             "ssl": ssl_result,
             "url_security": url_security_result,
-            "risk_engine": risk_result,
+            "risk_explanation": risk_result["explanation"],
+            "url_security_reasons": (
+                risk_result["url_security_reasons"]
+            ),
             "message": "URL scanned successfully"
         }
 
-        # Save scan result to database
+        # --------------------------------------------------
+        # 9. SAVE SCAN TO DATABASE
+        # --------------------------------------------------
+
         connection = get_connection()
 
         connection.execute(
@@ -144,14 +176,17 @@ def scan_url(request: URLRequest):
 
 @app.get("/api/v1/history")
 def get_history():
-
     try:
         connection = get_connection()
 
         rows = connection.execute(
             """
-            SELECT id, url, classification, risk_score,
-                   confidence, scan_time
+            SELECT id,
+                   url,
+                   classification,
+                   risk_score,
+                   confidence,
+                   scan_time
             FROM scan_history
             ORDER BY id DESC
             """
@@ -162,14 +197,16 @@ def get_history():
         history = []
 
         for row in rows:
-            history.append({
-                "id": row["id"],
-                "url": row["url"],
-                "classification": row["classification"],
-                "risk_score": row["risk_score"],
-                "confidence": row["confidence"],
-                "scan_time": row["scan_time"]
-            })
+            history.append(
+                {
+                    "id": row["id"],
+                    "url": row["url"],
+                    "classification": row["classification"],
+                    "risk_score": row["risk_score"],
+                    "confidence": row["confidence"],
+                    "scan_time": row["scan_time"]
+                }
+            )
 
         return history
 
