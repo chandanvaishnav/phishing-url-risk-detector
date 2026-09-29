@@ -92,6 +92,9 @@ const reportConfidence =
 const reportStatus =
     document.getElementById("reportStatus");
 
+const reportBadge =
+    document.getElementById("reportBadge");    
+
 const reportSummary =
     document.getElementById("reportSummary");
 
@@ -863,6 +866,14 @@ function displayFeatures(features) {
         "featureHttpsStatus"
     );
 
+    // HTTP URLs should not display "Secure"
+    if (!features.uses_https) {
+        setText(
+            "featureHttpsStatus",
+            "No HTTPS"
+        );
+    }
+
 
     updateFeature(
         "featureIP",
@@ -914,7 +925,6 @@ function displayFeatures(features) {
     );
 
 }
-
 
 /* ============================================================
    FEATURE HELPER
@@ -976,12 +986,29 @@ function updateFeature(
 
             else {
 
-                statusElement.textContent =
-                    "Secure";
+                /*
+                 * HTTPS is a special case.
+                 * "Not detected" should not be shown
+                 * as "Secure".
+                 */
 
-                statusElement.classList.add(
-                    "secure"
-                );
+                if (valueId === "featureHttps") {
+
+                    statusElement.textContent =
+                        "No HTTPS";
+
+                }
+
+                else {
+
+                    statusElement.textContent =
+                        "Secure";
+
+                    statusElement.classList.add(
+                        "secure"
+                    );
+
+                }
 
             }
 
@@ -1225,6 +1252,11 @@ function updateReport(result) {
     setText(
         "reportStatus",
         "Analysis Complete"
+    );
+
+    setText(
+        "reportBadge",
+        "ANALYSIS COMPLETE"
     );
 
 
@@ -1666,31 +1698,63 @@ function loadHistory() {
         ) {
 
             scanHistory =
-                parsed.map(
-                    item => ({
+                parsed
+                    .filter(
+                        item => {
 
-                        id:
-                            item.id ||
-                            Date.now(),
+                            /*
+                             * Remove old records created
+                             * before the current risk engine.
+                             * These records have a 0.00 risk score
+                             * and were incorrectly marked Safe.
+                             */
 
-                        url:
-                            item.url ||
-                            "--",
+                            const risk =
+                                Number(
+                                    item.risk
+                                );
 
-                        time:
-                            item.time ||
-                            "--",
 
-                        risk:
-                            item.risk ??
-                            "--",
+                            return !(
+                                risk === 0 &&
+                                item.verdict === "Safe"
+                            );
 
-                        verdict:
-                            item.verdict ||
-                            "Unknown"
+                        }
+                    )
+                    .map(
+                        item => ({
 
-                    })
-                );
+                            id:
+                                item.id ||
+                                Date.now(),
+
+                            url:
+                                item.url ||
+                                "--",
+
+                            time:
+                                item.time ||
+                                "--",
+
+                            risk:
+                                item.risk ??
+                                "--",
+
+                            verdict:
+                                item.verdict ||
+                                "Unknown"
+
+                        })
+                    );
+
+
+            /*
+             * Save the cleaned history so the
+             * obsolete records do not return later.
+             */
+
+            saveHistory();
 
         }
 
@@ -2351,30 +2415,69 @@ async function loadBackendHistory() {
 
 
         const converted =
-            backendHistory.map(
-                item => ({
+            backendHistory
+                .filter(
+                    item => {
 
-                    id:
-                        item.id,
+                        /*
+                         * Only keep valid scan records.
+                         *
+                         * Old/unfinished records have:
+                         * - classification = null
+                         * - risk_score = null
+                         *
+                         * These should not appear in
+                         * the dashboard history.
+                         */
 
-                    url:
-                        item.url,
+                        const risk =
+                            Number(
+                                item.risk_score
+                            );
 
-                    time:
-                        formatBackendDate(
-                            item.scan_time
-                        ),
 
-                    risk:
-                        item.risk_score,
+                        const hasValidClassification =
+                            typeof item.classification === "string" &&
+                            item.classification.trim() !== "";
 
-                    verdict:
-                        getVerdict(
-                            item.classification
-                        )
 
-                })
-            );
+                        const hasValidRisk =
+                            Number.isFinite(
+                                risk
+                            );
+
+
+                        return (
+                            hasValidClassification &&
+                            hasValidRisk
+                        );
+
+                    }
+                )
+                .map(
+                    item => ({
+
+                        id:
+                            item.id,
+
+                        url:
+                            item.url,
+
+                        time:
+                            formatBackendDate(
+                                item.scan_time
+                            ),
+
+                        risk:
+                            item.risk_score,
+
+                        verdict:
+                            getVerdict(
+                                item.classification
+                            )
+
+                    })
+                );
 
 
         scanHistory =
@@ -2406,7 +2509,6 @@ async function loadBackendHistory() {
     }
 
 }
-
 
 /* ============================================================
    FORMAT BACKEND TIMESTAMP
@@ -2506,12 +2608,46 @@ async function updateDashboardStats() {
         }
 
 
+        /*
+         * Only count scans that have a valid
+         * classification.
+         *
+         * Older database records may not have
+         * classification/risk data because they
+         * were created before the risk engine
+         * was integrated.
+         */
+
+        const classifiedHistory =
+            history.filter(
+                item => {
+
+                    const classification =
+                        String(
+                            item.classification || ""
+                        ).toLowerCase();
+
+                    return (
+                        classification === "high_risk" ||
+                        classification === "medium_risk" ||
+                        classification === "phishing" ||
+                        classification === "malicious" ||
+                        classification === "suspicious" ||
+                        classification === "low_risk" ||
+                        classification === "legitimate" ||
+                        classification === "safe"
+                    );
+
+                }
+            );
+
+
         const total =
-            history.length;
+            classifiedHistory.length;
 
 
         const threats =
-            history.filter(
+            classifiedHistory.filter(
                 item => {
 
                     const classification =
@@ -2524,7 +2660,8 @@ async function updateDashboardStats() {
                         classification === "high_risk" ||
                         classification === "medium_risk" ||
                         classification === "phishing" ||
-                        classification === "malicious"
+                        classification === "malicious" ||
+                        classification === "suspicious"
                     );
 
                 }
@@ -2532,7 +2669,7 @@ async function updateDashboardStats() {
 
 
         const safe =
-            history.filter(
+            classifiedHistory.filter(
                 item => {
 
                     const classification =
@@ -2608,6 +2745,7 @@ async function updateDashboardStats() {
             }
         );
 
+
     } catch (error) {
 
         console.error(
@@ -2618,7 +2756,6 @@ async function updateDashboardStats() {
     }
 
 }
-
 
 /* ============================================================
    BACKEND STARTUP
