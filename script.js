@@ -15,6 +15,11 @@ const API_BASE_URL = "http://127.0.0.1:8000";
    DOM ELEMENTS
    ============================================================ */
 
+const modelAccuracy =
+    document.getElementById("modelAccuracy");
+
+modelAccuracy.textContent = "88.21%";
+
 const urlInput = document.getElementById("urlInput");
 const clearInput = document.getElementById("clearInput");
 
@@ -391,12 +396,7 @@ async function analyzeURL() {
         /* Update security reasons */
 
         displayReasons(
-            result.risk_engine &&
-            Array.isArray(
-                result.risk_engine.explanation
-            )
-                ? result.risk_engine.explanation
-                : []
+            result.risk_explanation || []
         );
 
 
@@ -546,7 +546,8 @@ function displayResult(result) {
 
 
     if (
-        classification === "high_risk"
+        classification === "high_risk" ||
+        classification === "medium_risk"
     ) {
 
         verdict =
@@ -606,7 +607,8 @@ function displayResult(result) {
 
 
         if (
-            classification === "high_risk"
+            classification === "high_risk" ||
+            classification === "medium_risk"
         ) {
 
             riskStatus.textContent =
@@ -662,6 +664,7 @@ function displayResult(result) {
 
         if (
             classification === "high_risk" ||
+            classification === "medium_risk" ||
             classification === "suspicious"
         ) {
 
@@ -713,7 +716,8 @@ function displayResult(result) {
     if (resultStatus) {
 
         if (
-            classification === "high_risk"
+            classification === "high_risk" ||
+            classification === "medium_risk"
         ) {
 
             resultStatus.textContent =
@@ -1300,6 +1304,7 @@ function getVerdict(
 
     if (
         value === "high_risk" ||
+        value === "medium_risk" ||
         value === "phishing" ||
         value === "malicious"
     ) {
@@ -2517,6 +2522,7 @@ async function updateDashboardStats() {
 
                     return (
                         classification === "high_risk" ||
+                        classification === "medium_risk" ||
                         classification === "phishing" ||
                         classification === "malicious"
                     );
