@@ -3,32 +3,32 @@
    ========================================================= */
 
 :root {
-    --bg: #06151f;
-    --bg-main: #071a25;
-    --bg-card: #0a202d;
-    --bg-card-hover: #0d2838;
-    --sidebar: #06131c;
-    --border: #173746;
+    --bg: #090a0c;
+    --bg-main: #101114;
+    --bg-card: #17191c;
+    --bg-card-hover: #202226;
+    --sidebar: #0c0d0f;
+    --border: #34363a;
 
-    --cyan: #00cfff;
-    --cyan-light: #28ddff;
-    --blue: #168cff;
+    --cyan: #d4af5d;
+    --cyan-light: #eed58f;
+    --blue: #b89042;
 
-    --green: #20d6a3;
-    --red: #ff5d6c;
-    --yellow: #ffc857;
-    --purple: #a879ff;
+    --green: #4caf7b;
+    --red: #d95757;
+    --yellow: #d9ab4c;
+    --purple: #b3a06b;
 
-    --text: #f5f9fc;
-    --text-secondary: #8ca9b9;
-    --text-muted: #577587;
+    --text: #f4f2ed;
+    --text-secondary: #b5b2aa;
+    --text-muted: #85827a;
 
     --sidebar-width: 250px;
 
-    --radius: 16px;
-    --radius-small: 10px;
+    --radius: 8px;
+    --radius-small: 6px;
 
-    --shadow: 0 12px 35px rgba(0, 0, 0, 0.22);
+    --shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
 }
 
 
@@ -2096,4 +2096,230 @@ a {
         box-shadow: none;
     }
 
+}
+
+
+/* =========================================================
+   BLACK + GOLD BRANDING
+   ========================================================= */
+
+.app {
+    background:
+        radial-gradient(circle at 75% 0%, rgba(212, 175, 95, 0.045), transparent 30%),
+        var(--bg);
+}
+
+.main-content {
+    background:
+        radial-gradient(circle at 70% 0%, rgba(212, 175, 95, 0.04), transparent 28%),
+        var(--bg-main);
+}
+
+.nav-item:hover {
+    background: #17181a;
+    border-color: #403a2c;
+}
+
+.nav-item.active {
+    background: rgba(212, 175, 95, 0.09);
+    border-color: rgba(212, 175, 95, 0.25);
+}
+
+.brand-logo {
+    background: #17150f;
+    border-color: rgba(212, 175, 95, 0.38);
+}
+
+.topbar {
+    background: rgba(16, 17, 20, 0.96);
+}
+
+.notification-btn {
+    background: #191a1d;
+    border-color: #3a3b3e;
+}
+
+.profile-avatar {
+    color: var(--cyan);
+    background: #292316;
+}
+
+.stat-icon.blue,
+.stat-icon.purple {
+    color: var(--cyan);
+    background: rgba(212, 175, 95, 0.1);
+}
+
+.content-card,
+.stat-card,
+.risk-card,
+.verdict-card,
+.feature-card,
+.security-check-card,
+.explanation-card,
+.report-card {
+    background-color: var(--bg-card);
+    border-color: var(--border);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+}
+
+.analyze-btn {
+    color: #17130a;
+    background: var(--cyan);
+    box-shadow: 0 8px 22px rgba(212, 175, 95, 0.14);
+}
+
+.analyze-btn:hover {
+    background: var(--cyan-light);
+    box-shadow: 0 8px 24px rgba(212, 175, 95, 0.2);
+}
+
+.url-input-wrapper:focus-within {
+    border-color: var(--cyan);
+    box-shadow: 0 0 0 3px rgba(212, 175, 95, 0.1);
+}
+
+.ir-analysis-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.ir-analysis-card {
+    min-width: 0;
+    padding: 22px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+.ir-analysis-card h3 {
+    margin-bottom: 6px;
+    color: var(--text);
+    font-size: 17px;
+}
+
+.ir-card-caption,
+.ir-rank-values span,
+.ir-terms-block > span {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.ir-metric {
+    display: block;
+    margin-top: 14px;
+    color: var(--cyan-light);
+    font-size: 26px;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+
+.ir-substatus {
+    display: block;
+    margin-top: 5px;
+    color: var(--text-muted);
+    font-size: 11px;
+    overflow-wrap: anywhere;
+}
+
+.ir-terms-block {
+    margin-top: 20px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+}
+
+.ir-terms-block p {
+    margin-top: 7px;
+    color: var(--text);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+
+.ir-rank-values {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.ir-rank-values .ir-metric {
+    margin-top: 5px;
+    font-size: 22px;
+}
+
+.ir-recommendation-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 16px 0 0;
+    padding-left: 22px;
+}
+
+.ir-recommendation-list li {
+    padding-left: 4px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.ir-recommendation-list li::marker {
+    color: var(--cyan);
+    font-weight: 700;
+}
+
+.ir-recommendation-list li span {
+    display: block;
+}
+
+.ir-recommendation-list .ir-recommendation-url {
+    color: var(--text);
+    overflow-wrap: anywhere;
+}
+
+.ir-recommendation-list li strong {
+    display: block;
+    margin-top: 3px;
+    color: var(--cyan-light);
+}
+
+.ir-overall-status {
+    margin-top: 12px;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+@media (max-width: 1100px) {
+    .ir-analysis-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .ir-recommendations-card {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 760px) {
+    .ir-analysis-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .ir-recommendations-card {
+        grid-column: auto;
+    }
+}
+
+.ir-similarity-note {
+    margin-top: 14px;
+}
+
+.report-ir-summary {
+    margin: 20px 0;
+}
+
+.report-ir-summary p {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
 }

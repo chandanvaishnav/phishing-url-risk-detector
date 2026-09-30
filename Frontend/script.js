@@ -77,11 +77,34 @@ function validateURL(value) {
 
     try {
         const parsed = new URL(url);
+        const hostname = (parsed.hostname || "").toLowerCase();
 
-        if (!parsed.hostname) {
+        if (!hostname) {
             return {
                 valid: false,
                 message: "Please enter a valid website URL."
+            };
+        }
+
+        if (hostname === "localhost") {
+            return {
+                valid: true,
+                url
+            };
+        }
+
+        if (!hostname.includes(".") || hostname.startsWith(".") || hostname.endsWith(".")) {
+            return {
+                valid: false,
+                message: "Invalid URL. Enter a valid hostname such as https://google.com"
+            };
+        }
+
+        const tld = hostname.split(".").pop() || "";
+        if (!tld || tld.length < 2) {
+            return {
+                valid: false,
+                message: "Invalid URL. Enter a valid hostname such as https://google.com"
             };
         }
 
@@ -104,8 +127,8 @@ function validateURL(value) {
 const urlInput = $("urlInput");
 const clearInput = $("clearInput");
 const analyzeBtn = $("analyzeBtn");
-const analyzeText = $("analyzeText");
-const analyzeArrow = $("analyzeArrow");
+const analyzeText = document.querySelector(".analyze-btn-text");
+const analyzeArrow = document.querySelector(".analyze-btn-icon");
 
 const scannerMessage = $("scannerMessage");
 const scannerMessageText = $("scannerMessageText");
@@ -125,7 +148,7 @@ const verdictText = $("verdictText");
 const verdictDescription = $("verdictDescription");
 
 const confidenceValue = $("confidenceValue");
-const confidenceBar = $("confidenceBar");
+const confidenceBar = $("confidenceFill");
 
 const resultStatus = $("resultStatus");
 
@@ -133,50 +156,43 @@ const resultStatus = $("resultStatus");
 
 const explanationTitle = $("explanationTitle");
 const explanationText = $("explanationText");
+const aiExplanation = $("aiExplanation");
 const reasonList = $("reasonList");
+const emptyHistory = $("emptyHistory");
 
 /* Features */
 
-const featureHttps = $("featureHttps");
-
-const featureLength =
-    $("featureUrlLength") || $("featureLength");
-
-const featureIP =
-    $("featureIp") || $("featureIP");
-
-const featureAt = $("featureAt");
-const featureSubdomains = $("featureSubdomains");
-const featureSpecial = $("featureSpecial");
-const featureShortener = $("featureShortener");
-const featureKeywords = $("featureKeywords");
-
 const featureHttpsStatus = $("featureHttpsStatus");
+const featureLengthStatus = $("featureLengthStatus");
 const featureIPStatus = $("featureIPStatus");
 const featureAtStatus = $("featureAtStatus");
+const featureSubdomainStatus = $("featureSubdomainStatus");
+const featureSpecialStatus = $("featureSpecialStatus");
 const featureShortenerStatus = $("featureShortenerStatus");
 const featureKeywordsStatus = $("featureKeywordsStatus");
 
 /* Security checks */
 
-const securityHttps = $("securityHttps");
-const securitySsl = $("securitySsl");
-const securityDns = $("securityDns");
-const securityIp = $("securityIp");
-const securityKeywords = $("securityKeywords");
-const securityShortener = $("securityShortener");
-
-const securityChecksStatus = $("securityChecksStatus");
+const dnsCheckIcon = $("dnsCheckIcon");
+const dnsCheckStatus = $("dnsCheckStatus");
+const sslCheckIcon = $("sslCheckIcon");
+const sslCheckStatus = $("sslCheckStatus");
+const urlCheckIcon = $("urlCheckIcon");
+const urlCheckStatus = $("urlCheckStatus");
+const mlCheckIcon = $("mlCheckIcon");
+const mlCheckStatus = $("mlCheckStatus");
 
 /* Report */
 
 const reportUrl = $("reportUrl");
 const reportTime = $("reportTime");
 const reportVerdict = $("reportVerdict");
-const reportRisk = $("reportRisk");
+const reportRiskScore = $("reportRiskScore");
 const reportConfidence = $("reportConfidence");
 const reportStatus = $("reportStatus");
 const reportSummary = $("reportSummary");
+const reportIRSummary = $("reportIRSummary");
+const reportBadge = $("reportBadge");
 const printReportBtn = $("printReportBtn");
 
 /* History */
@@ -185,11 +201,27 @@ const historyList = $("historyList");
 const historyTableBody = $("historyTableBody");
 const clearHistoryBtn = $("clearHistoryBtn");
 
+/* Information retrieval */
+
+const irOverallStatus = $("irOverallStatus");
+const irLanguageScore = $("irLanguageScore");
+const irLanguageStatus = $("irLanguageStatus");
+const irSuspiciousTerms = $("irSuspiciousTerms");
+const irPageRankScore = $("irPageRankScore");
+const irPageRankRank = $("irPageRankRank");
+const irGraphNodes = $("irGraphNodes");
+const irGraphEdges = $("irGraphEdges");
+const irPageRankStatus = $("irPageRankStatus");
+const irGraphDetails = $("irGraphDetails");
+const irRecommendations = $("irRecommendations");
+const irRecommendationStatus = $("irRecommendationStatus");
+
 /* Dashboard stats */
 
 const totalScans = $("totalScans");
 const threatsDetected = $("threatsDetected");
 const safeUrls = $("safeUrls");
+const modelStatus = $("modelStatus");
 
 
 /* =========================================================
@@ -265,13 +297,14 @@ async function analyzeWithBackend(url) {
         })
     });
 
+    const payload = await response.json();
     if (!response.ok) {
-        throw new Error(
-            `Backend error: ${response.status}`
-        );
+        const error = new Error(payload.detail || `Backend error: ${response.status}`);
+        error.status = response.status;
+        throw error;
     }
 
-    return await response.json();
+    return payload;
 }
 
 
@@ -281,10 +314,30 @@ async function analyzeWithBackend(url) {
 
 function convertBackendResult(data) {
 
+    if (!data || data.valid === false) {
+        return {
+            valid: false,
+            url: data?.url || "",
+            prediction: "Invalid URL",
+            classification: "invalid",
+            risk_score: 0,
+            confidence: 0,
+            url_security: {},
+            dns: {},
+            ssl: {},
+            ml: {},
+            reasons: [],
+            risk_explanation: data?.detail || "Invalid URL or unable to verify the hostname.",
+            explanation: data?.detail || "Invalid URL or unable to verify the hostname.",
+            ir_analysis: null
+        };
+    }
+
     const security = data.url_security || {};
     const dns = data.dns || {};
     const ssl = data.ssl || {};
     const ml = data.ml || {};
+    const rawExplanation = data.explanation ?? data.risk_explanation ?? ml.explanation ?? "";
 
     let confidence = safeNumber(
         data.confidence ?? ml.confidence,
@@ -297,61 +350,74 @@ function convertBackendResult(data) {
 
     confidence = Math.round(confidence * 10) / 10;
 
-    const classification = String(
+    const rawClassification = String(
         data.classification ||
+        data.risk_classification ||
         ml.classification ||
         ""
     ).toLowerCase();
 
-    const isPhishing =
-        classification.includes("phish") ||
-        classification.includes("malicious") ||
-        classification.includes("danger");
-
-    const prediction =
-        isPhishing ? "Phishing" : "Safe";
-
-    const riskScore = safeNumber(
+    const riskScoreValue = safeNumber(
         data.risk_score ??
         data.risk_engine?.risk_score,
         0
     );
 
+    const isPhishing =
+        rawClassification.includes("phish") ||
+        rawClassification.includes("malicious") ||
+        rawClassification.includes("danger") ||
+        riskScoreValue >= 30;
+    const isUnverifiable =
+        data.verifiable === false || rawClassification.includes("unverifiable");
+
+    const prediction =
+        isPhishing ? "Phishing" : isUnverifiable ? "Unable to verify URL" : "Safe";
+
     return {
-
+        valid: true,
+        verifiable: !isUnverifiable,
         url: data.url || "",
-
-        prediction: prediction,
-
+        prediction,
         classification:
             data.classification ||
+            data.risk_classification ||
             ml.classification ||
             "",
-
-        risk_score: riskScore,
-
-        confidence: confidence,
-
+        risk_score: riskScoreValue,
+        confidence,
         url_security: security,
-
-        dns: dns,
-
-        ssl: ssl,
-
-        ml: ml,
-
-        reasons:
-            data.reasons ||
-            data.url_security_reasons ||
-            ml.signals ||
-            [],
-
-        risk_explanation:
-            data.risk_explanation ||
-            data.risk_engine?.explanation ||
-            ml.explanation ||
-            ""
+        dns,
+        ssl,
+        ml,
+        reasons: Array.isArray(data.reasons)
+            ? data.reasons
+            : Array.isArray(data.signals)
+                ? data.signals
+                : Array.isArray(data.url_security_reasons)
+                    ? data.url_security_reasons
+                    : Array.isArray(ml.signals)
+                        ? ml.signals
+                        : [],
+        risk_explanation: normalizeExplanation(rawExplanation),
+        explanation: normalizeExplanation(rawExplanation),
+        ir_analysis: data.ir_analysis || null
     };
+}
+
+function normalizeExplanation(value) {
+    if (Array.isArray(value)) {
+        return value
+            .filter(item => item !== null && item !== undefined && String(item).trim())
+            .map(item => String(item).trim())
+            .join(" ");
+    }
+
+    if (typeof value === "string") {
+        return value.trim();
+    }
+
+    return "";
 }
 
 
@@ -359,7 +425,76 @@ function convertBackendResult(data) {
    DISPLAY RESULT
    ========================================================= */
 
+function clearSecurityCheck(element, icon) {
+    if (element) {
+        element.textContent = "--";
+        element.classList.remove("secure", "warning", "danger");
+    }
+    if (icon) {
+        icon.textContent = "?";
+    }
+}
+
+function resetScanDetails(result) {
+    const state = result?.failureType || "invalid";
+    const isInvalid = state === "invalid";
+    const isScanning = state === "scanning";
+    const title = isInvalid ? "Invalid URL" : isScanning ? "Analyzing URL" : "Scan Unavailable";
+    const message = result?.risk_explanation || (isInvalid
+        ? "Invalid URL. Enter a valid hostname such as https://google.com"
+        : isScanning
+            ? "Running the security and machine-learning checks."
+            : "The scan could not be completed. Please try again.");
+
+    if (riskScore) riskScore.textContent = "--";
+    if (riskLevel) riskLevel.textContent = isInvalid ? "Invalid URL" : isScanning ? "Analyzing" : "Unavailable";
+    if (riskStatus) riskStatus.textContent = isInvalid ? "INVALID" : isScanning ? "SCANNING" : "UNAVAILABLE";
+    if (riskGauge) riskGauge.style.strokeDashoffset = "0";
+    if (verdictTitle) verdictTitle.textContent = title;
+    if (verdictText) verdictText.textContent = title;
+    if (verdictIcon) verdictIcon.textContent = isInvalid ? "!" : isScanning ? "…" : "?";
+    if (verdictDescription) verdictDescription.textContent = message;
+    if (confidenceValue) confidenceValue.textContent = "--";
+    if (confidenceBar) confidenceBar.style.width = "0%";
+    if (resultStatus) resultStatus.textContent = isInvalid ? "Validation Failed" : isScanning ? "Analyzing" : "Backend Unavailable";
+
+    [
+        featureHttpsStatus,
+        featureLengthStatus,
+        featureIPStatus,
+        featureAtStatus,
+        featureSubdomainStatus,
+        featureSpecialStatus,
+        featureShortenerStatus,
+        featureKeywordsStatus
+    ].forEach(element => {
+        if (element) element.textContent = "--";
+    });
+
+    clearSecurityCheck(dnsCheckStatus, dnsCheckIcon);
+    clearSecurityCheck(sslCheckStatus, sslCheckIcon);
+    clearSecurityCheck(urlCheckStatus, urlCheckIcon);
+    clearSecurityCheck(mlCheckStatus, mlCheckIcon);
+
+    displayExplanation(result);
+    displayIRAnalysis(null, result?.url || "", isScanning ? "Analyzing scan" : "Unavailable");
+    updateReport(result);
+
+    if (modelStatus && state === "error") {
+        modelStatus.textContent = "Unavailable";
+    } else if (modelStatus && isScanning) {
+        modelStatus.textContent = "Checking...";
+    }
+}
+
 function displayResult(result) {
+
+    if (!result || result.valid === false) {
+        resetScanDetails(result);
+        return;
+    }
+
+    const isUnverifiable = result.verifiable === false;
 
     const score = safeNumber(
         result.risk_score,
@@ -383,7 +518,9 @@ function displayResult(result) {
     if (riskLevel) {
 
         riskLevel.textContent =
-            score <= 30
+            isUnverifiable
+                ? "Unverified"
+                : score <= 30
                 ? "Low Risk"
                 : score <= 70
                     ? "Medium Risk"
@@ -395,7 +532,9 @@ function displayResult(result) {
     if (riskStatus) {
 
         riskStatus.textContent =
-            score <= 30
+            isUnverifiable
+                ? "UNVERIFIED"
+                : score <= 30
                 ? "LOW"
                 : score <= 70
                     ? "MEDIUM"
@@ -406,23 +545,21 @@ function displayResult(result) {
 
     if (verdictTitle) {
         verdictTitle.textContent =
-            result.prediction === "Phishing"
-                ? "Phishing URL"
-                : "Safe URL";
+            result.prediction === "Phishing" ? "Phishing URL" : isUnverifiable ? "Unable to Verify URL" : "Safe URL";
     }
 
     if (verdictText) {
         verdictText.textContent =
-            result.prediction === "Phishing"
-                ? "Phishing URL"
-                : "Safe URL";
+            result.prediction === "Phishing" ? "Phishing URL" : isUnverifiable ? "Unable to Verify URL" : "Safe URL";
     }
 
     if (verdictDescription) {
-        verdictDescription.textContent =
-            result.prediction === "Phishing"
+        verdictDescription.textContent = getMLVerdictComparison(result)
+            || (result.prediction === "Phishing"
                 ? "This URL has been classified as potentially dangerous."
-                : "The security model has classified this URL as low risk.";
+                : isUnverifiable
+                    ? "The hostname did not resolve, so this URL cannot be verified as safe."
+                    : "The security model has classified this URL as low risk.");
     }
 
     /* Confidence */
@@ -466,9 +603,161 @@ function displayResult(result) {
 
     displayExplanation(result);
 
+    displayIRAnalysis(result.ir_analysis);
+
+    if (modelStatus) {
+        modelStatus.textContent = result.ml?.classification ? "Available" : "Unavailable";
+    }
+
     updateReport(result);
 
     updateDashboardStats();
+}
+
+
+/* =========================================================
+   INFORMATION RETRIEVAL
+   ========================================================= */
+
+function displayIRAnalysis(analysis, currentUrl = "", emptyState = "Unavailable") {
+    if (!analysis || typeof analysis !== "object") {
+        if (irOverallStatus) {
+            irOverallStatus.textContent = emptyState;
+        }
+        if (irLanguageScore) irLanguageScore.textContent = emptyState === "Analyzing scan" ? "Analyzing..." : "Unavailable";
+        if (irLanguageStatus) irLanguageStatus.textContent = emptyState === "Analyzing scan" ? "Awaiting scan result" : "Unavailable";
+        if (irSuspiciousTerms) irSuspiciousTerms.textContent = "No data available.";
+        if (irPageRankScore) irPageRankScore.textContent = emptyState === "Analyzing scan" ? "Analyzing..." : "Unavailable";
+        if (irPageRankRank) irPageRankRank.textContent = "--";
+        if (irGraphNodes) irGraphNodes.textContent = "--";
+        if (irGraphEdges) irGraphEdges.textContent = "--";
+        if (irPageRankStatus) irPageRankStatus.textContent = emptyState === "Analyzing scan" ? "Awaiting scan result" : "Insufficient graph data";
+        if (irRecommendations) irRecommendations.innerHTML = "<li>No similar URLs found.</li>";
+        if (irRecommendationStatus) irRecommendationStatus.textContent = emptyState === "Analyzing scan" ? "Awaiting scan result" : "Unavailable";
+        return;
+    }
+
+    const language = analysis.language_model || {};
+    const pageRank = analysis.pagerank || {};
+    const recommendations = analysis.content_recommendations || {};
+    const languageAvailable = language.status === "available";
+    const languageInsufficient = language.status !== "available"
+        && /required|insufficient/i.test(String(language.message || ""));
+    const graphNodeCount = Number(pageRank.graph_nodes);
+    const graphEdgeCount = Number(pageRank.graph_edges);
+    const pageRankAvailable = pageRank.status === "available"
+        && Number.isFinite(graphNodeCount)
+        && graphNodeCount > 1
+        && Number.isFinite(graphEdgeCount)
+        && graphEdgeCount > 0;
+    const recommendationsAvailable = recommendations.status === "available";
+
+    if (irOverallStatus) {
+        irOverallStatus.textContent = analysis.status === "available"
+            ? `IR analysis calculated from ${safeNumber(analysis.corpus_size, 0)} historical URLs.`
+            : analysis.message || "IR analysis is temporarily unavailable.";
+    }
+
+    const languageScore = language.score;
+    if (irLanguageScore) {
+        irLanguageScore.textContent = languageAvailable && typeof languageScore === "number" && Number.isFinite(languageScore)
+            ? `${(languageScore * 100).toFixed(1)}%`
+            : languageInsufficient ? "Insufficient data" : "Unavailable";
+    }
+    if (irLanguageStatus) {
+        irLanguageStatus.textContent = languageAvailable
+            ? `${safeNumber(language.training_documents, 0)} labeled history records`
+            : languageInsufficient ? "Insufficient corpus data" : language.message || "Language model unavailable";
+    }
+    if (irSuspiciousTerms) {
+        const terms = Array.isArray(language.suspicious_terms)
+            ? language.suspicious_terms.filter(term => typeof term === "string" && term.trim())
+            : [];
+        irSuspiciousTerms.textContent = terms.length ? terms.join(", ") : "No corpus-derived terms identified.";
+    }
+
+    const graphScore = pageRank.score;
+    if (irPageRankScore) {
+        irPageRankScore.textContent = pageRankAvailable && typeof graphScore === "number" && Number.isFinite(graphScore)
+            ? graphScore.toFixed(6)
+            : pageRank.status === "available" ? "Insufficient data" : "Unavailable";
+    }
+    if (irPageRankRank) {
+        const rank = Number(pageRank.rank);
+        irPageRankRank.textContent = pageRankAvailable && Number.isInteger(rank) && rank > 0 ? `#${rank}` : "--";
+    }
+    if (irPageRankStatus) {
+        irPageRankStatus.textContent = pageRankAvailable
+            ? "PageRank calculated over the local relationship graph"
+            : pageRank.status === "available" ? "Insufficient graph data" : pageRank.message || "PageRank unavailable";
+    }
+    if (irGraphDetails) {
+        irGraphDetails.textContent = "Calculated from URL/domain relationships in local scan history; not Google's live PageRank.";
+    }
+    if (irGraphNodes) {
+        irGraphNodes.textContent = Number.isFinite(graphNodeCount) ? String(graphNodeCount) : "--";
+    }
+    if (irGraphEdges) {
+        irGraphEdges.textContent = Number.isFinite(graphEdgeCount) ? String(graphEdgeCount) : "--";
+    }
+
+    let displayedRecommendationCount = 0;
+    if (irRecommendations) {
+        irRecommendations.innerHTML = "";
+        const matches = Array.isArray(recommendations.recommendations)
+            ? recommendations.recommendations
+            : [];
+        const normalizedCurrentUrl = normalizeURLForMatch(currentUrl);
+        const validMatches = matches.filter(item =>
+            item
+            && typeof item.url === "string"
+            && item.url.trim()
+            && normalizeURLForMatch(item.url) !== normalizedCurrentUrl
+            && typeof item.similarity === "number"
+            && Number.isFinite(item.similarity)
+            && item.similarity > 0
+            && item.similarity <= 1
+        );
+        displayedRecommendationCount = validMatches.length;
+
+        if (!validMatches.length) {
+            const item = document.createElement("li");
+            item.textContent = "No similar URLs found.";
+            irRecommendations.appendChild(item);
+        } else {
+            validMatches.slice(0, 3).forEach(match => {
+                const item = document.createElement("li");
+                const url = document.createElement("span");
+                const similarity = document.createElement("strong");
+                const percentage = match.similarity * 100;
+                url.className = "ir-recommendation-url";
+                url.textContent = match.url;
+                similarity.textContent = `${Math.max(0, Math.min(100, percentage)).toFixed(1)}%`;
+                item.append(url, similarity);
+                irRecommendations.appendChild(item);
+            });
+        }
+    }
+    if (irRecommendationStatus) {
+        irRecommendationStatus.textContent = recommendationsAvailable
+            ? displayedRecommendationCount
+                ? `${displayedRecommendationCount} historical match${displayedRecommendationCount === 1 ? "" : "es"}`
+                : "No similar URLs found."
+            : recommendations.message || "Recommendations unavailable";
+    }
+}
+
+function normalizeURLForMatch(value) {
+    try {
+        const candidate = /^https?:\/\//i.test(String(value || ""))
+            ? String(value).trim()
+            : `https://${String(value || "").trim()}`;
+        const parsed = new URL(candidate);
+        const pathname = parsed.pathname.replace(/\/+$/, "");
+        return `${parsed.protocol}//${parsed.host}${pathname}${parsed.search}`.toLowerCase();
+    } catch {
+        return "";
+    }
 }
 
 
@@ -478,109 +767,49 @@ function displayResult(result) {
 
 function displayFeatures(result) {
 
-    const security =
-        result.url_security || {};
-
+    const security = result.url_security || {};
     const url = result.url || "";
-
-    if (featureHttps) {
-        featureHttps.textContent =
-            security.uses_https
-                ? "Secure"
-                : "Not Secure";
-    }
-
-    if (featureLength) {
-        featureLength.textContent =
-            safeNumber(
-                security.url_length,
-                url.length
-            );
-    }
-
-    if (featureIP) {
-        featureIP.textContent =
-            security.has_ip_address
-                ? "Detected"
-                : "Safe";
-    }
-
-    if (featureAt) {
-        featureAt.textContent =
-            security.has_at_symbol
-                ? "Detected"
-                : "Safe";
-    }
-
-    if (featureSubdomains) {
-        featureSubdomains.textContent =
-            safeNumber(
-                security.subdomain_count,
-                0
-            );
-    }
-
-    if (featureSpecial) {
-        featureSpecial.textContent =
-            safeNumber(
-                security.special_char_count,
-                0
-            );
-    }
-
-    if (featureShortener) {
-        featureShortener.textContent =
-            isShortenedURL(url)
-                ? "Detected"
-                : "Safe";
-    }
-
-    const keywordCount =
-        safeNumber(
-            security.suspicious_keyword_count,
-            0
-        );
-
-    if (featureKeywords) {
-        featureKeywords.textContent =
-            keywordCount;
-    }
-
-    /* Status text */
 
     if (featureHttpsStatus) {
         featureHttpsStatus.textContent =
-            security.uses_https
-                ? "Secure"
-                : "Warning";
+            security.uses_https ? "Secure" : "Warning";
+    }
+
+    if (featureLengthStatus) {
+        featureLengthStatus.textContent =
+            safeNumber(security.url_length, url.length);
     }
 
     if (featureIPStatus) {
         featureIPStatus.textContent =
-            security.has_ip_address
-                ? "Detected"
-                : "Not Detected";
+            security.has_ip_address ? "Detected" : "Not Detected";
     }
 
     if (featureAtStatus) {
         featureAtStatus.textContent =
-            security.has_at_symbol
-                ? "Detected"
-                : "Not Detected";
+            security.has_at_symbol ? "Detected" : "Not Detected";
+    }
+
+    if (featureSubdomainStatus) {
+        featureSubdomainStatus.textContent =
+            safeNumber(security.subdomain_count, 0);
+    }
+
+    if (featureSpecialStatus) {
+        featureSpecialStatus.textContent =
+            safeNumber(security.special_char_count, 0);
     }
 
     if (featureShortenerStatus) {
         featureShortenerStatus.textContent =
-            isShortenedURL(url)
-                ? "Detected"
-                : "Not Detected";
+            isShortenedURL(url) ? "Detected" : "Not Detected";
     }
+
+    const keywordCount = safeNumber(security.suspicious_keyword_count, 0);
 
     if (featureKeywordsStatus) {
         featureKeywordsStatus.textContent =
-            keywordCount > 0
-                ? `${keywordCount} Detected`
-                : "None Detected";
+            keywordCount > 0 ? `${keywordCount} Detected` : "None Detected";
     }
 }
 
@@ -611,131 +840,56 @@ function displaySecurityChecks(data) {
         return;
     }
 
-    const security =
-        data.url_security || {};
-
-    const dns =
-        data.dns || {};
-
-    const ssl =
-        data.ssl || {};
-
-    const ml =
-        data.ml || {};
-
-    /* HTTPS */
+    const security = data.url_security || {};
+    const dns = data.dns || {};
+    const ssl = data.ssl || {};
+    const ml = data.ml || {};
 
     setSecurityCheck(
-        securityHttps,
-        security.uses_https
-            ? "Secure"
-            : "Not Secure",
-        security.uses_https
-            ? "secure"
-            : "danger"
+        dnsCheckStatus,
+        dns.resolves ? "Resolved" : "Not Resolved",
+        dns.resolves ? "secure" : "warning"
     );
 
-    /* SSL */
-
     setSecurityCheck(
-        securitySsl,
-        ssl.valid
-            ? "Valid"
-            : "Invalid / Unavailable",
-        ssl.valid
-            ? "secure"
-            : "warning"
+        sslCheckStatus,
+        ssl.valid ? "Valid" : "Invalid / Unavailable",
+        ssl.valid ? "secure" : "warning"
     );
 
-    /* DNS */
-
     setSecurityCheck(
-        securityDns,
-        dns.resolves
-            ? "Resolved"
-            : "Not Resolved",
-        dns.resolves
-            ? "secure"
-            : "warning"
-    );
-
-    /* IP */
-
-    setSecurityCheck(
-        securityIp,
-        security.has_ip_address
-            ? "Detected"
-            : "Not Detected",
-        security.has_ip_address
+        urlCheckStatus,
+        security.has_ip_address || security.has_at_symbol || security.suspicious_keyword_count > 0
+            ? "Warning"
+            : "Secure",
+        security.has_ip_address || security.has_at_symbol || security.suspicious_keyword_count > 0
             ? "warning"
             : "secure"
     );
 
-    /* Suspicious Keywords */
-
-    const keywordCount =
-        safeNumber(
-            security.suspicious_keyword_count,
-            0
-        );
-
+    const mlClassification = String(ml.classification || "").toLowerCase();
+    const mlPhishing = mlClassification.includes("phish");
+    const mlLegitimate = mlClassification.includes("legitimate");
     setSecurityCheck(
-        securityKeywords,
-        keywordCount > 0
-            ? `${keywordCount} Detected`
-            : "None Detected",
-        keywordCount > 0
-            ? "danger"
-            : "secure"
+        mlCheckStatus,
+        mlPhishing ? "Phishing" : mlLegitimate ? "Legitimate" : "Unavailable",
+        mlPhishing ? "danger" : mlLegitimate ? "secure" : "warning"
     );
 
-    /* URL Shortener */
+    if (dnsCheckIcon) {
+        dnsCheckIcon.textContent = dns.resolves ? "✓" : "!";
+    }
 
-    const shortener =
-        isShortenedURL(data.url);
+    if (sslCheckIcon) {
+        sslCheckIcon.textContent = ssl.valid ? "✓" : "!";
+    }
 
-    setSecurityCheck(
-        securityShortener,
-        shortener
-            ? "Detected"
-            : "Not Detected",
-        shortener
-            ? "warning"
-            : "secure"
-    );
+    if (urlCheckIcon) {
+        urlCheckIcon.textContent = "✓";
+    }
 
-    /* Overall */
-
-    if (securityChecksStatus) {
-
-        const classification =
-            String(
-                data.classification ||
-                ml.classification ||
-                ""
-            ).toLowerCase();
-
-        const phishing =
-            classification.includes("phish") ||
-            classification.includes("malicious") ||
-            classification.includes("danger");
-
-        securityChecksStatus.textContent =
-            phishing
-                ? "THREAT DETECTED"
-                : "SECURITY CHECK COMPLETE";
-
-        securityChecksStatus.classList.remove(
-            "secure",
-            "warning",
-            "danger"
-        );
-
-        securityChecksStatus.classList.add(
-            phishing
-                ? "danger"
-                : "secure"
-        );
+    if (mlCheckIcon) {
+        mlCheckIcon.textContent = mlPhishing ? "!" : mlLegitimate ? "✓" : "?";
     }
 }
 
@@ -746,22 +900,43 @@ function displaySecurityChecks(data) {
 
 function displayExplanation(result) {
 
+    const explanationValue = normalizeExplanation(
+        result?.risk_explanation || result?.explanation || ""
+    );
+    const resultMismatch = getMLVerdictComparison(result);
+
+    const fallbackText =
+        result?.valid === false
+            ? explanationValue || "The scan could not be completed."
+            : result?.prediction === "Phishing"
+            ? "The security analysis identified indicators associated with phishing."
+            : result?.prediction === "Unable to verify URL"
+                ? "The hostname did not resolve, so this URL cannot be verified as safe."
+                : "The URL passed the available security checks with a low calculated risk.";
+
+    const displayText = [resultMismatch, explanationValue || fallbackText]
+        .filter(Boolean)
+        .join(" ");
+
     if (explanationTitle) {
         explanationTitle.textContent =
-            result.prediction === "Phishing"
+            resultMismatch
+                ? "ML result and overall assessment differ"
+                : result?.valid === false
+                    ? result.failureType === "scanning"
+                        ? "Analysis in progress"
+                        : result.failureType === "error" ? "Scan unavailable" : "URL validation failed"
+                    : result.prediction === "Phishing"
                 ? "Potential phishing indicators detected"
                 : "No major phishing indicators detected";
     }
 
-    if (explanationText) {
+    if (aiExplanation) {
+        aiExplanation.textContent = displayText;
+    }
 
-        explanationText.textContent =
-            result.risk_explanation ||
-            (
-                result.prediction === "Phishing"
-                    ? "The security analysis identified indicators associated with phishing."
-                    : "The URL passed the available security checks with a low calculated risk."
-            );
+    if (explanationText) {
+        explanationText.textContent = displayText;
     }
 
     if (!reasonList) {
@@ -769,6 +944,13 @@ function displayExplanation(result) {
     }
 
     reasonList.innerHTML = "";
+
+    if (result?.valid === false) {
+        const li = document.createElement("li");
+        li.textContent = explanationValue || "No data available.";
+        reasonList.appendChild(li);
+        return;
+    }
 
     let reasons = [];
 
@@ -809,6 +991,77 @@ function displayExplanation(result) {
     });
 }
 
+function getMLVerdictComparison(result) {
+    if (!result || result.valid === false) {
+        return "";
+    }
+
+    const mlClassification = String(result.ml?.classification || "").toLowerCase();
+    const mlVerdict = mlClassification.includes("phish")
+        ? "Phishing"
+        : mlClassification.includes("legitimate")
+            ? "Legitimate"
+            : "";
+    if (!mlVerdict) {
+        return "";
+    }
+
+    const risk = Math.round(safeNumber(result.risk_score, 0));
+    if (mlVerdict === "Legitimate" && result.prediction === "Phishing") {
+        return `The ML model classified the URL as legitimate, but additional security indicators increased the overall risk score to ${risk}/100, resulting in a potentially dangerous overall assessment.`;
+    }
+    if (mlVerdict === "Phishing" && result.prediction === "Safe") {
+        return `The ML model classified the URL as phishing, while the combined security assessment calculated an overall risk score of ${risk}/100.`;
+    }
+    if (mlVerdict === "Legitimate" && result.verifiable === false) {
+        return `The ML model classified the URL as legitimate, but the hostname could not be verified; this result is not presented as safe. The overall risk score is ${risk}/100.`;
+    }
+    return "";
+}
+
+function getIRReportSummary(analysis, currentUrl) {
+    if (!analysis || typeof analysis !== "object") {
+        return "IR analysis unavailable.";
+    }
+
+    const language = analysis.language_model || {};
+    const pageRank = analysis.pagerank || {};
+    const recommendations = analysis.content_recommendations || {};
+    const languageScore = Number(language.score);
+    const suspiciousTerms = Array.isArray(language.suspicious_terms)
+        ? language.suspicious_terms.filter(term => typeof term === "string" && term.trim())
+        : [];
+    const languageText = language.status === "available" && Number.isFinite(languageScore)
+        ? `Language-model phishing likelihood ${(languageScore * 100).toFixed(1)}% from ${safeNumber(language.training_documents, 0)} labeled records; phishing-associated terms: ${suspiciousTerms.length ? suspiciousTerms.join(", ") : "none identified"}`
+        : /required|insufficient/i.test(String(language.message || ""))
+            ? "Insufficient corpus data"
+            : "Language model unavailable";
+
+    const graphNodes = Number(pageRank.graph_nodes);
+    const graphEdges = Number(pageRank.graph_edges);
+    const graphScore = Number(pageRank.score);
+    const graphText = pageRank.status === "available"
+        && graphNodes > 1
+        && graphEdges > 0
+        && Number.isFinite(graphScore)
+        ? `PageRank ${graphScore.toFixed(6)}, rank #${safeNumber(pageRank.rank, 0)}, ${graphNodes} URLs/nodes and ${graphEdges} relationships/edges`
+        : "Insufficient graph data";
+
+    const currentKey = normalizeURLForMatch(currentUrl);
+    const matchCount = (Array.isArray(recommendations.recommendations)
+        ? recommendations.recommendations
+        : []).filter(item => item
+            && typeof item.url === "string"
+            && normalizeURLForMatch(item.url) !== currentKey
+            && typeof item.similarity === "number"
+            && Number.isFinite(item.similarity)
+            && item.similarity > 0
+            && item.similarity <= 1
+        ).length;
+
+    return `${languageText}; ${graphText}; ${matchCount} similar historical URL${matchCount === 1 ? "" : "s"}.`;
+}
+
 
 /* =========================================================
    REPORT
@@ -816,51 +1069,102 @@ function displayExplanation(result) {
 
 function updateReport(result) {
 
+    if (!result || result.valid === false) {
+        const failureType = result?.failureType || "invalid";
+        const isInvalid = failureType === "invalid";
+        const isScanning = failureType === "scanning";
+
+        if (reportUrl) {
+            reportUrl.textContent = result?.url || "--";
+        }
+
+        if (reportTime) {
+            reportTime.textContent = formatDate();
+        }
+
+        if (reportVerdict) {
+            reportVerdict.textContent = isInvalid ? "Invalid URL" : isScanning ? "Analyzing" : "Unavailable";
+        }
+
+        if (reportRiskScore) {
+            reportRiskScore.textContent = "--";
+        }
+
+        if (reportConfidence) {
+            reportConfidence.textContent = "--";
+        }
+
+        if (reportStatus) {
+            reportStatus.textContent = isInvalid ? "Validation Failed" : isScanning ? "Scanning" : "Backend Error";
+        }
+
+        if (reportBadge) {
+            reportBadge.textContent = isInvalid ? "INVALID URL" : isScanning ? "SCANNING" : "UNAVAILABLE";
+            reportBadge.classList.remove("warning", "danger", "secure");
+            reportBadge.classList.add(isInvalid ? "warning" : isScanning ? "warning" : "danger");
+        }
+
+        if (reportSummary) {
+            reportSummary.textContent = result?.risk_explanation || (isInvalid
+                ? "Invalid URL. Enter a valid hostname such as https://google.com"
+                : isScanning
+                    ? "The current scan is in progress."
+                    : "The backend could not complete this scan.");
+        }
+
+        if (reportIRSummary) {
+            reportIRSummary.textContent = isScanning ? "IR analysis will appear when scanning completes." : "IR analysis unavailable.";
+        }
+
+        return;
+    }
+
     if (reportUrl) {
-        reportUrl.textContent =
-            result.url || "--";
+        reportUrl.textContent = result.url || "--";
     }
 
     if (reportTime) {
-        reportTime.textContent =
-            formatDate();
+        reportTime.textContent = formatDate();
     }
 
     if (reportVerdict) {
-        reportVerdict.textContent =
-            result.prediction === "Phishing"
-                ? "Phishing"
-                : "Safe";
+        reportVerdict.textContent = result.prediction;
     }
 
-  if (reportRisk) {
-    reportRisk.textContent =
-        Math.round(
-            safeNumber(
-                result.riskScore ?? result.risk_score,
-                0
-            )
-        );
-}
+    if (reportRiskScore) {
+        reportRiskScore.textContent =
+            Math.round(safeNumber(result.risk_score, 0));
+    }
 
     if (reportConfidence) {
         reportConfidence.textContent =
-            `${safeNumber(
-                result.confidence,
-                0
-            ).toFixed(1)}%`;
+            `${safeNumber(result.confidence, 0).toFixed(1)}%`;
     }
 
     if (reportStatus) {
-        reportStatus.textContent =
-            "Completed";
+        reportStatus.textContent = result.verifiable === false ? "Unverified" : "Completed";
+    }
+
+    if (reportBadge) {
+        reportBadge.textContent =
+            result.prediction === "Phishing" ? "THREAT DETECTED" : result.verifiable === false ? "UNVERIFIED" : "SAFE";
+        reportBadge.classList.remove("warning", "danger", "secure");
+        reportBadge.classList.add(
+            result.prediction === "Phishing" ? "danger" : result.verifiable === false ? "warning" : "secure"
+        );
     }
 
     if (reportSummary) {
-        reportSummary.textContent =
-            result.prediction === "Phishing"
+        reportSummary.textContent = getMLVerdictComparison(result)
+            || (result.prediction === "Phishing"
                 ? "The URL has been classified as potentially dangerous."
-                : "The URL has been classified as low risk by the security analysis.";
+                : result.verifiable === false
+                    ? "The hostname did not resolve, so the URL cannot be verified as safe."
+                    : "The URL has been classified as low risk by the security analysis.");
+    }
+
+    if (reportIRSummary) {
+        reportIRSummary.textContent = getIRReportSummary(result.ir_analysis, result.url);
     }
 }
 
@@ -876,9 +1180,8 @@ function getHistory() {
         const saved =
             localStorage.getItem(HISTORY_KEY);
 
-        return saved
-            ? JSON.parse(saved)
-            : [];
+        const parsed = saved ? JSON.parse(saved) : [];
+        return Array.isArray(parsed) ? parsed : [];
 
     } catch {
         return [];
@@ -934,6 +1237,12 @@ function renderHistory() {
 
     const history =
         getHistory();
+
+    const shouldShowEmptyState = history.length === 0;
+
+    if (emptyHistory) {
+        emptyHistory.style.display = shouldShowEmptyState ? "block" : "none";
+    }
 
     if (historyTableBody) {
 
@@ -1009,7 +1318,7 @@ function updateDashboardStats() {
     const safe =
         history.filter(
             item =>
-                item.prediction !== "Phishing"
+                item.prediction === "Safe"
         ).length;
 
     if (totalScans) {
@@ -1042,8 +1351,17 @@ async function scanURL() {
 
     if (!validation.valid) {
 
+        const invalidResult = {
+            valid: false,
+            failureType: "invalid",
+            url: urlInput?.value?.trim() || "",
+            prediction: "Invalid URL",
+            risk_explanation: "Invalid URL. Enter a valid hostname such as https://google.com"
+        };
+        displayResult(invalidResult);
+
         showScannerMessage(
-            validation.message,
+            invalidResult.risk_explanation,
             "error"
         );
 
@@ -1056,6 +1374,13 @@ async function scanURL() {
     hideScannerMessage();
 
     setLoading(true);
+    displayResult({
+        valid: false,
+        failureType: "scanning",
+        url,
+        prediction: "Analyzing",
+        risk_explanation: "Analysis in progress. Previous scan data has been cleared."
+    });
 
     try {
 
@@ -1069,6 +1394,14 @@ async function scanURL() {
 
         displayResult(result);
 
+        if (!result.valid) {
+            showScannerMessage(
+                result.risk_explanation || "Invalid URL. Enter a valid hostname such as https://google.com",
+                "error"
+            );
+            return;
+        }
+
         saveHistory(result);
 
         showScannerMessage(
@@ -1078,15 +1411,37 @@ async function scanURL() {
 
     } catch (error) {
 
-        console.error(
-            "PhishGuard scan error:",
-            error
-        );
+        if (error?.status === 400) {
+            const invalidResult = {
+                valid: false,
+                failureType: "invalid",
+                url,
+                prediction: "Invalid URL",
+                risk_explanation: "Invalid URL. Enter a valid hostname such as https://google.com"
+            };
+            displayResult(invalidResult);
+            showScannerMessage(invalidResult.risk_explanation, "error");
+            return;
+        }
 
-        showScannerMessage(
-            "Unable to connect to the security backend. Make sure the backend is running on port 8000.",
-            "error"
-        );
+        console.warn("PhishGuard scan could not complete:", error);
+
+        const statusMatch = (error?.message || "").match(/Backend error: (\d+)/);
+        const statusCode = statusMatch ? Number(statusMatch[1]) : null;
+
+        const message =
+            statusCode === 500
+                ? "Security scan failed. Check the backend logs for details."
+                : "Unable to connect to the security backend. Make sure the backend is running on port 8000.";
+
+        displayResult({
+            valid: false,
+            failureType: "error",
+            url,
+            prediction: "Scan Unavailable",
+            risk_explanation: message
+        });
+        showScannerMessage(message, "error");
 
     } finally {
 
@@ -1152,21 +1507,16 @@ function setupNavigation() {
             "click",
             () => {
 
-                const target =
+                const targetSelector =
                     link.getAttribute("href");
 
-                if (
-                    target &&
-                    target.length > 1
-                ) {
+                const target = targetSelector && targetSelector.length > 1
+                    ? document.querySelector(targetSelector)
+                    : null;
 
+                if (target) {
                     setTimeout(() => {
-
-                        window.scrollTo({
-                            top: 0,
-                            behavior: "smooth"
-                        });
-
+                        target.scrollIntoView({ behavior: "smooth", block: "start" });
                     }, 50);
                 }
             }
