@@ -1,2805 +1,1656 @@
-/* ============================================================
-   PHISHGUARD - FRONTEND
-   Connected to FastAPI Backend
-   ============================================================ */
+"use strict";
 
+/* =========================================================
+   PHISHGUARD - FRONTEND JAVASCRIPT
+   ========================================================= */
 
-/* ============================================================
-   CONFIGURATION
-   ============================================================ */
+const API_BASE_URL = String(
+    window.PHISHGUARD_API_BASE_URL || "http://127.0.0.1:8000"
+).replace(/\/+$/, "");
+const API_URL = `${API_BASE_URL}/api/v1/scan`;
+const HISTORY_KEY = "phishguardHistory";
 
-const API_BASE_URL = "http://127.0.0.1:8000";
+/* =========================================================
+   HELPER FUNCTIONS
+   ========================================================= */
 
+function $(id) {
+    return document.getElementById(id);
+}
 
-/* ============================================================
+function safeNumber(value, fallback = 0) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+function formatDate(date = new Date()) {
+    return date.toLocaleString();
+}
+
+function escapeHTML(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function isShortenedURL(url) {
+    if (!url) return false;
+
+    try {
+        const host = new URL(url).hostname.toLowerCase();
+
+        const shorteners = [
+            "bit.ly",
+            "tinyurl.com",
+            "t.co",
+            "goo.gl",
+            "is.gd",
+            "ow.ly",
+            "buff.ly",
+            "rebrand.ly",
+            "cutt.ly",
+            "shorturl.at",
+            "tiny.cc"
+        ];
+
+        return shorteners.some(
+            domain => host === domain || host.endsWith("." + domain)
+        );
+    } catch {
+        return false;
+    }
+}
+
+function validateURL(value) {
+    if (!value || !value.trim()) {
+        return {
+            valid: false,
+            message: "Please enter a website URL."
+        };
+    }
+
+    let url = value.trim();
+
+    if (!/^https?:\/\//i.test(url)) {
+        url = "https://" + url;
+    }
+
+    try {
+        const parsed = new URL(url);
+        const hostname = (parsed.hostname || "").toLowerCase();
+
+        if (!hostname) {
+            return {
+                valid: false,
+                message: "Please enter a valid website URL."
+            };
+        }
+
+        if (hostname === "localhost") {
+            return {
+                valid: true,
+                url
+            };
+        }
+
+        if (!hostname.includes(".") || hostname.startsWith(".") || hostname.endsWith(".")) {
+            return {
+                valid: false,
+                message: "Invalid URL. Enter a valid hostname such as https://google.com"
+            };
+        }
+
+        const tld = hostname.split(".").pop() || "";
+        if (!tld || tld.length < 2) {
+            return {
+                valid: false,
+                message: "Invalid URL. Enter a valid hostname such as https://google.com"
+            };
+        }
+
+        return {
+            valid: true,
+            url
+        };
+    } catch {
+        return {
+            valid: false,
+            message: "Invalid URL. Example: https://google.com"
+        };
+    }
+}
+
+/* =========================================================
    DOM ELEMENTS
-   ============================================================ */
+   ========================================================= */
+
+const urlInput = $("urlInput");
+const clearInput = $("clearInput");
+const analyzeBtn = $("analyzeBtn");
+const analyzeText = document.querySelector(".analyze-btn-text");
+const analyzeArrow = document.querySelector(".analyze-btn-icon");
+
+const scannerMessage = $("scannerMessage");
+const scannerMessageText = $("scannerMessageText");
+const scanLoading = $("scanLoading");
+const scanAgainBtn = $("scanAgainBtn");
+
+/* Result */
+
+const riskScore = $("riskScore");
+const riskGauge = $("riskGauge");
+const riskStatus = $("riskStatus");
+const riskLevel = $("riskLevel");
+
+const verdictIcon = $("verdictIcon");
+const verdictTitle = $("verdictTitle");
+const verdictText = $("verdictText");
+const verdictDescription = $("verdictDescription");
+
+const confidenceValue = $("confidenceValue");
+const confidenceBar = $("confidenceFill");
+
+const resultStatus = $("resultStatus");
+
+/* Explanation */
+
+const explanationTitle = $("explanationTitle");
+const explanationText = $("explanationText");
+const aiExplanation = $("aiExplanation");
+const reasonList = $("reasonList");
+const emptyHistory = $("emptyHistory");
+
+/* Features */
+
+const featureHttpsStatus = $("featureHttpsStatus");
+const featureLengthStatus = $("featureLengthStatus");
+const featureIPStatus = $("featureIPStatus");
+const featureAtStatus = $("featureAtStatus");
+const featureSubdomainStatus = $("featureSubdomainStatus");
+const featureSpecialStatus = $("featureSpecialStatus");
+const featureShortenerStatus = $("featureShortenerStatus");
+const featureKeywordsStatus = $("featureKeywordsStatus");
+
+/* Security checks */
+
+const dnsCheckIcon = $("dnsCheckIcon");
+const dnsCheckStatus = $("dnsCheckStatus");
+const sslCheckIcon = $("sslCheckIcon");
+const sslCheckStatus = $("sslCheckStatus");
+const urlCheckIcon = $("urlCheckIcon");
+const urlCheckStatus = $("urlCheckStatus");
+const mlCheckIcon = $("mlCheckIcon");
+const mlCheckStatus = $("mlCheckStatus");
+
+/* Report */
+
+const reportUrl = $("reportUrl");
+const reportTime = $("reportTime");
+const reportVerdict = $("reportVerdict");
+const reportRiskScore = $("reportRiskScore");
+const reportConfidence = $("reportConfidence");
+const reportStatus = $("reportStatus");
+const reportSummary = $("reportSummary");
+const reportIRSummary = $("reportIRSummary");
+const reportBadge = $("reportBadge");
+const printReportBtn = $("printReportBtn");
+
+/* History */
+
+const historyList = $("historyList");
+const historyTableBody = $("historyTableBody");
+const clearHistoryBtn = $("clearHistoryBtn");
+const historyFilterButtons = document.querySelectorAll(".history-actions [data-filter]");
+let activeHistoryFilter = "all";
+
+/* Information retrieval */
+
+const irOverallStatus = $("irOverallStatus");
+const irLanguageScore = $("irLanguageScore");
+const irLanguageStatus = $("irLanguageStatus");
+const irSuspiciousTerms = $("irSuspiciousTerms");
+const irPageRankScore = $("irPageRankScore");
+const irPageRankRank = $("irPageRankRank");
+const irGraphNodes = $("irGraphNodes");
+const irGraphEdges = $("irGraphEdges");
+const irPageRankStatus = $("irPageRankStatus");
+const irGraphDetails = $("irGraphDetails");
+const irRecommendations = $("irRecommendations");
+const irRecommendationStatus = $("irRecommendationStatus");
+
+/* Dashboard stats */
+
+const totalScans = $("totalScans");
+const threatsDetected = $("threatsDetected");
+const safeUrls = $("safeUrls");
+const modelStatus = $("modelStatus");
 
-const modelAccuracy =
-    document.getElementById("modelAccuracy");
 
-modelAccuracy.textContent = "88.21%";
+/* =========================================================
+   MESSAGE FUNCTIONS
+   ========================================================= */
 
-const urlInput = document.getElementById("urlInput");
-const clearInput = document.getElementById("clearInput");
+function showScannerMessage(message, type = "error") {
+    if (!scannerMessage) return;
 
-const analyzeBtn = document.getElementById("analyzeBtn");
-const analyzeText = document.getElementById("analyzeText");
-const analyzeArrow = document.getElementById("analyzeArrow");
+    scannerMessage.style.display = "block";
 
-const scannerMessage = document.getElementById("scannerMessage");
-const scannerMessageText =
-    document.getElementById("scannerMessageText");
-
-const scanLoading = document.getElementById("scanLoading");
-const scanAgainBtn =
-    document.getElementById("scanAgainBtn");
-
-const riskScore =
-    document.getElementById("riskScore");
-
-const riskGauge =
-    document.getElementById("riskGauge");
-
-const riskStatus =
-    document.getElementById("riskStatus");
-
-const riskDescription =
-    document.getElementById("riskDescription");
-
-const verdictIcon =
-    document.getElementById("verdictIcon");
-
-const verdictTitle =
-    document.getElementById("verdictTitle");
-
-const verdictDescription =
-    document.getElementById("verdictDescription");
-
-const confidenceValue =
-    document.getElementById("confidenceValue");
-
-const confidenceBar =
-    document.getElementById("confidenceBar");
-
-const resultStatus =
-    document.getElementById("resultStatus");
-
-const explanationTitle =
-    document.getElementById("explanationTitle");
-
-const explanationText =
-    document.getElementById("explanationText");
-
-const reasonList =
-    document.getElementById("reasonList");
-
-const reportUrl =
-    document.getElementById("reportUrl");
-
-const reportTime =
-    document.getElementById("reportTime");
-
-const reportVerdict =
-    document.getElementById("reportVerdict");
-
-const reportRisk =
-    document.getElementById("reportRisk");
-
-const reportConfidence =
-    document.getElementById("reportConfidence");
-
-const reportStatus =
-    document.getElementById("reportStatus");
-
-const reportBadge =
-    document.getElementById("reportBadge");    
-
-const reportSummary =
-    document.getElementById("reportSummary");
-
-const printReportBtn =
-    document.getElementById("printReportBtn");
-
-const historyTableBody =
-    document.getElementById("historyTableBody");
-
-const clearHistoryBtn =
-    document.getElementById("clearHistoryBtn");
-
-const filterButtons =
-    document.querySelectorAll(".filter-btn");
-
-const navItems =
-    document.querySelectorAll(".nav-item");
-
-
-/* ============================================================
-   STATE
-   ============================================================ */
-
-let currentFilter = "all";
-
-let scanHistory = [];
-
-let latestResult = null;
-
-
-/* ============================================================
-   INITIALIZATION
-   ============================================================ */
-
-document.addEventListener("DOMContentLoaded", async () => {
-
-    loadHistory();
-
-    updateClearButton();
-
-    renderHistory();
-
-    setupInput();
-
-    setupAnalyzeButton();
-
-    setupHistoryControls();
-
-    setupReportButton();
-
-    setupNavigation();
-
-    updateDashboardStats();
-
-});
-
-
-/* ============================================================
-   INPUT SETUP
-   ============================================================ */
-
-function setupInput() {
-
-    if (urlInput) {
-
-        urlInput.addEventListener(
-            "input",
-            () => {
-
-                hideScannerMessage();
-
-            }
-        );
-
-
-        urlInput.addEventListener(
-            "keydown",
-            (event) => {
-
-                if (event.key === "Enter") {
-
-                    event.preventDefault();
-
-                    analyzeURL();
-
-                }
-
-            }
-        );
-
+    if (scannerMessageText) {
+        scannerMessageText.textContent = message;
+    } else {
+        scannerMessage.textContent = message;
     }
 
-
-    if (clearInput) {
-
-        clearInput.addEventListener(
-            "click",
-            () => {
-
-                if (urlInput) {
-
-                    urlInput.value = "";
-
-                    urlInput.focus();
-
-                }
-
-            }
-        );
-
-    }
-
-}
-
-
-/* ============================================================
-   ANALYZE BUTTON
-   ============================================================ */
-
-function setupAnalyzeButton() {
-
-    if (!analyzeBtn) {
-
-        console.error(
-            "PhishGuard: Analyze button not found."
-        );
-
-        return;
-
-    }
-
-
-    analyzeBtn.addEventListener(
-        "click",
-        analyzeURL
+    scannerMessage.classList.remove(
+        "error",
+        "success",
+        "warning"
     );
 
+    scannerMessage.classList.add(type);
+}
+
+function hideScannerMessage() {
+    if (scannerMessage) {
+        scannerMessage.style.display = "none";
+    }
 }
 
 
-/* ============================================================
-   MAIN SCAN FUNCTION
-   ============================================================ */
+/* =========================================================
+   LOADING
+   ========================================================= */
 
-async function analyzeURL() {
-
-    if (!urlInput) {
-
-        return;
-
+function setLoading(isLoading) {
+    if (analyzeBtn) {
+        analyzeBtn.disabled = isLoading;
     }
 
-
-    let url =
-        urlInput.value.trim();
-
-
-    if (!url) {
-
-        showScannerMessage(
-            "Please enter a URL."
-        );
-
-        urlInput.focus();
-
-        return;
-
+    if (analyzeText) {
+        analyzeText.textContent =
+            isLoading ? "Analyzing..." : "Analyze URL";
     }
 
-
-    /*
-     * Add https:// when the user enters
-     * example.com instead of https://example.com
-     */
-
-    if (
-        !url.startsWith("http://") &&
-        !url.startsWith("https://")
-    ) {
-
-        url =
-            "https://" + url;
-
+    if (analyzeArrow) {
+        analyzeArrow.style.display =
+            isLoading ? "none" : "inline";
     }
 
+    if (scanLoading) {
+        scanLoading.style.display =
+            isLoading ? "block" : "none";
+    }
+}
 
-    /*
-     * Browser-side URL validation
-     */
 
-    try {
+/* =========================================================
+   BACKEND API
+   ========================================================= */
 
-        new URL(url);
+async function analyzeWithBackend(url) {
 
-    } catch (error) {
+    const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            url: url
+        })
+    });
 
-        showScannerMessage(
-            "Please enter a valid website URL."
-        );
-
-        return;
-
+    const payload = await response.json();
+    if (!response.ok) {
+        const error = new Error(payload.detail || `Backend error: ${response.status}`);
+        error.status = response.status;
+        throw error;
     }
 
-
-    hideScannerMessage();
-
-    setLoadingState(true);
+    return payload;
+}
 
 
-    console.log(
-        "PhishGuard: Sending URL to backend:",
-        url
+/* =========================================================
+   CONVERT BACKEND RESULT
+   ========================================================= */
+
+function convertBackendResult(data) {
+
+    if (!data || data.valid === false) {
+        return {
+            valid: false,
+            url: data?.url || "",
+            prediction: "Invalid URL",
+            classification: "invalid",
+            risk_score: 0,
+            confidence: 0,
+            url_security: {},
+            dns: {},
+            ssl: {},
+            ml: {},
+            reasons: [],
+            risk_explanation: data?.detail || "Invalid URL or unable to verify the hostname.",
+            explanation: data?.detail || "Invalid URL or unable to verify the hostname.",
+            ir_analysis: null
+        };
+    }
+
+    const security = data.url_security || {};
+    const dns = data.dns || {};
+    const ssl = data.ssl || {};
+    const ml = data.ml || {};
+    const rawExplanation = data.explanation ?? data.risk_explanation ?? ml.explanation ?? "";
+
+    let confidence = safeNumber(
+        data.confidence ?? ml.confidence,
+        0
     );
 
-
-    try {
-
-        const response =
-            await fetch(
-                `${API_BASE_URL}/api/v1/scan`,
-                {
-                    method: "POST",
-
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    },
-
-                    body: JSON.stringify({
-                        url: url
-                    })
-                }
-            );
-
-
-        console.log(
-            "PhishGuard: Backend status:",
-            response.status
-        );
-
-
-        if (!response.ok) {
-
-            let message =
-                "The backend could not scan this URL.";
-
-            try {
-
-                const errorData =
-                    await response.json();
-
-                if (
-                    errorData &&
-                    errorData.detail
-                ) {
-
-                    message =
-                        errorData.detail;
-
-                }
-
-            } catch (error) {
-
-                console.log(
-                    "Could not read backend error."
-                );
-
-            }
-
-
-            throw new Error(message);
-
-        }
-
-
-        const result =
-            await response.json();
-
-
-        console.log(
-            "PhishGuard: Backend result:",
-            result
-        );
-
-
-        latestResult = result;
-
-
-        /* Update result */
-
-        displayResult(result);
-
-
-        /* Update security features */
-
-        displayFeatures(
-            result.url_security || {}
-        );
-
-
-        /* Update security reasons */
-
-        displayReasons(
-            result.risk_explanation || []
-        );
-
-
-        /* Update report */
-
-        updateReport(result);
-
-
-        /* Add to local history */
-
-        addToHistory(result);
-
-
-        /* Refresh dashboard */
-
-        updateDashboardStats();
-
-
-        /* Scroll to result */
-
-        scrollToResult();
-
-
-    } catch (error) {
-
-        console.error(
-            "PhishGuard scan failed:",
-            error
-        );
-
-
-        let message =
-            error.message ||
-            "An unexpected error occurred.";
-
-
-        if (
-            error instanceof TypeError &&
-            message.toLowerCase().includes("fetch")
-        ) {
-
-            message =
-                "Could not connect to the backend. Make sure FastAPI is running on http://127.0.0.1:8000";
-
-        }
-
-
-        showScannerMessage(
-            message
-        );
-
-
-    } finally {
-
-        setLoadingState(false);
-
+    if (confidence >= 0 && confidence <= 1) {
+        confidence = confidence * 100;
     }
 
+    confidence = Math.round(confidence * 10) / 10;
+
+    const rawClassification = String(
+        data.classification ||
+        data.risk_classification ||
+        ml.classification ||
+        ""
+    ).toLowerCase();
+
+    const riskScoreValue = safeNumber(
+        data.risk_score ??
+        data.risk_engine?.risk_score,
+        0
+    );
+
+    const isPhishing =
+        rawClassification.includes("phish") ||
+        rawClassification.includes("malicious") ||
+        rawClassification.includes("danger") ||
+        riskScoreValue >= 30;
+    const isUnverifiable =
+        data.verifiable === false || rawClassification.includes("unverifiable");
+
+    const prediction =
+        isPhishing ? "Phishing" : isUnverifiable ? "Unable to verify URL" : "Safe";
+
+    return {
+        valid: true,
+        verifiable: !isUnverifiable,
+        url: data.url || "",
+        prediction,
+        classification:
+            data.classification ||
+            data.risk_classification ||
+            ml.classification ||
+            "",
+        risk_score: riskScoreValue,
+        confidence,
+        url_security: security,
+        dns,
+        ssl,
+        ml,
+        reasons: Array.isArray(data.reasons)
+            ? data.reasons
+            : Array.isArray(data.signals)
+                ? data.signals
+                : Array.isArray(data.url_security_reasons)
+                    ? data.url_security_reasons
+                    : Array.isArray(ml.signals)
+                        ? ml.signals
+                        : [],
+        risk_explanation: normalizeExplanation(rawExplanation),
+        explanation: normalizeExplanation(rawExplanation),
+        ir_analysis: data.ir_analysis || null
+    };
+}
+
+function normalizeExplanation(value) {
+    if (Array.isArray(value)) {
+        return value
+            .filter(item => item !== null && item !== undefined && String(item).trim())
+            .map(item => String(item).trim())
+            .join(" ");
+    }
+
+    if (typeof value === "string") {
+        return value.trim();
+    }
+
+    return "";
 }
 
 
-/* ============================================================
+/* =========================================================
    DISPLAY RESULT
-   ============================================================ */
+   ========================================================= */
+
+function clearSecurityCheck(element, icon) {
+    if (element) {
+        element.textContent = "--";
+        element.classList.remove("secure", "warning", "danger");
+    }
+    if (icon) {
+        icon.textContent = "?";
+    }
+}
+
+function resetScanDetails(result) {
+    const state = result?.failureType || "invalid";
+    const isInvalid = state === "invalid";
+    const isScanning = state === "scanning";
+    const title = isInvalid ? "Invalid URL" : isScanning ? "Analyzing URL" : "Scan Unavailable";
+    const message = result?.risk_explanation || (isInvalid
+        ? "Invalid URL. Enter a valid hostname such as https://google.com"
+        : isScanning
+            ? "Running the security and machine-learning checks."
+            : "The scan could not be completed. Please try again.");
+
+    if (riskScore) riskScore.textContent = "--";
+    if (riskLevel) riskLevel.textContent = isInvalid ? "Invalid URL" : isScanning ? "Analyzing" : "Unavailable";
+    if (riskStatus) riskStatus.textContent = isInvalid ? "INVALID" : isScanning ? "SCANNING" : "UNAVAILABLE";
+    if (riskGauge) riskGauge.style.strokeDashoffset = "0";
+    if (verdictTitle) verdictTitle.textContent = title;
+    if (verdictText) verdictText.textContent = title;
+    if (verdictIcon) verdictIcon.textContent = isInvalid ? "!" : isScanning ? "…" : "?";
+    if (verdictDescription) verdictDescription.textContent = message;
+    if (confidenceValue) confidenceValue.textContent = "--";
+    if (confidenceBar) confidenceBar.style.width = "0%";
+    if (resultStatus) resultStatus.textContent = isInvalid ? "Validation Failed" : isScanning ? "Analyzing" : "Backend Unavailable";
+
+    [
+        featureHttpsStatus,
+        featureLengthStatus,
+        featureIPStatus,
+        featureAtStatus,
+        featureSubdomainStatus,
+        featureSpecialStatus,
+        featureShortenerStatus,
+        featureKeywordsStatus
+    ].forEach(element => {
+        if (element) element.textContent = "--";
+    });
+
+    clearSecurityCheck(dnsCheckStatus, dnsCheckIcon);
+    clearSecurityCheck(sslCheckStatus, sslCheckIcon);
+    clearSecurityCheck(urlCheckStatus, urlCheckIcon);
+    clearSecurityCheck(mlCheckStatus, mlCheckIcon);
+
+    displayExplanation(result);
+    displayIRAnalysis(null, result?.url || "", isScanning ? "Analyzing scan" : "Unavailable");
+    updateReport(result);
+
+    if (modelStatus && state === "error") {
+        modelStatus.textContent = "Unavailable";
+    } else if (modelStatus && isScanning) {
+        modelStatus.textContent = "Checking...";
+    }
+}
 
 function displayResult(result) {
 
-    const classification =
-        String(
-            result.classification || ""
-        ).toLowerCase();
-
-
-    let score =
-        Number(
-            result.risk_score
-        );
-
-
-    if (
-        Number.isNaN(score)
-    ) {
-
-        score = 0;
-
+    if (!result || result.valid === false) {
+        resetScanDetails(result);
+        return;
     }
 
+    const isUnverifiable = result.verifiable === false;
 
-    let confidence =
-        Number(
-            result.confidence
-        );
+    const score = safeNumber(
+        result.risk_score,
+        0
+    );
 
-
-    if (
-        Number.isNaN(confidence)
-    ) {
-
-        confidence = 0;
-
-    }
-
-
-    /*
-     * Backend confidence is decimal:
-     * 0.808672
-     *
-     * Convert to:
-     * 80.87%
-     */
-
-    if (
-        confidence <= 1
-    ) {
-
-        confidence *= 100;
-
-    }
-
-
-    confidence =
-        Math.max(
-            0,
-            Math.min(
-                100,
-                confidence
-            )
-        );
-
-
-    confidence =
-        Math.round(
-            confidence * 100
-        ) / 100;
-
-
-    /* Determine verdict */
-
-    let verdict =
-        "Safe";
-
-    let title =
-        "URL Appears Safe";
-
-    let description =
-        "The URL received a low-risk security assessment.";
-
-
-    if (
-        classification === "high_risk" ||
-        classification === "medium_risk"
-    ) {
-
-        verdict =
-            "Phishing";
-
-        title =
-            "Phishing Detected";
-
-        description =
-            "The security system identified this URL as high risk.";
-
-    }
-
-    else if (
-        classification === "suspicious"
-    ) {
-
-        verdict =
-            "Suspicious";
-
-        title =
-            "Suspicious URL";
-
-        description =
-            "The security system identified characteristics that require caution.";
-
-    }
-
+    const confidence = safeNumber(
+        result.confidence,
+        0
+    );
 
     /* Risk score */
 
     if (riskScore) {
-
         riskScore.textContent =
-            score.toFixed(2);
-
+            Math.round(score);
     }
 
+    /* Risk level */
 
-    if (riskDescription) {
+    if (riskLevel) {
 
-        riskDescription.textContent =
-            `Security risk score: ${score.toFixed(2)} / 100`;
-
+        riskLevel.textContent =
+            isUnverifiable
+                ? "Unverified"
+                : score <= 30
+                ? "Low Risk"
+                : score <= 70
+                    ? "Medium Risk"
+                    : "High Risk";
     }
-
 
     /* Risk status */
 
     if (riskStatus) {
 
-        riskStatus.classList.remove(
-            "safe",
-            "danger",
-            "awaiting"
-        );
-
-
-        if (
-            classification === "high_risk" ||
-            classification === "medium_risk"
-        ) {
-
-            riskStatus.textContent =
-                "High Risk";
-
-            riskStatus.classList.add(
-                "danger"
-            );
-
-        }
-
-        else if (
-            classification === "suspicious"
-        ) {
-
-            riskStatus.textContent =
-                "Suspicious";
-
-            riskStatus.classList.add(
-                "danger"
-            );
-
-        }
-
-        else {
-
-            riskStatus.textContent =
-                "Low Risk";
-
-            riskStatus.classList.add(
-                "safe"
-            );
-
-        }
-
+        riskStatus.textContent =
+            isUnverifiable
+                ? "UNVERIFIED"
+                : score <= 30
+                ? "LOW"
+                : score <= 70
+                    ? "MEDIUM"
+                    : "HIGH";
     }
 
-
-    /* Risk gauge */
-
-    updateRiskGauge(score);
-
-
-    /* Verdict icon */
-
-    if (verdictIcon) {
-
-        verdictIcon.classList.remove(
-            "safe",
-            "phishing"
-        );
-
-
-        if (
-            classification === "high_risk" ||
-            classification === "medium_risk" ||
-            classification === "suspicious"
-        ) {
-
-            verdictIcon.textContent =
-                "⚠";
-
-            verdictIcon.classList.add(
-                "phishing"
-            );
-
-        }
-
-        else {
-
-            verdictIcon.textContent =
-                "✓";
-
-            verdictIcon.classList.add(
-                "safe"
-            );
-
-        }
-
-    }
-
-
-    /* Verdict title */
+    /* Verdict */
 
     if (verdictTitle) {
-
         verdictTitle.textContent =
-            title;
-
+            result.prediction === "Phishing" ? "Phishing URL" : isUnverifiable ? "Unable to Verify URL" : "Safe URL";
     }
 
-
-    /* Verdict description */
+    if (verdictText) {
+        verdictText.textContent =
+            result.prediction === "Phishing" ? "Phishing URL" : isUnverifiable ? "Unable to Verify URL" : "Safe URL";
+    }
 
     if (verdictDescription) {
-
-        verdictDescription.textContent =
-            description;
-
+        verdictDescription.textContent = getMLVerdictComparison(result)
+            || (result.prediction === "Phishing"
+                ? "This URL has been classified as potentially dangerous."
+                : isUnverifiable
+                    ? "The hostname did not resolve, so this URL cannot be verified as safe."
+                    : "The security model has classified this URL as low risk.");
     }
-
-
-    /* Result status */
-
-    if (resultStatus) {
-
-        if (
-            classification === "high_risk" ||
-            classification === "medium_risk"
-        ) {
-
-            resultStatus.textContent =
-                "THREAT DETECTED";
-
-        }
-
-        else if (
-            classification === "suspicious"
-        ) {
-
-            resultStatus.textContent =
-                "SUSPICIOUS";
-
-        }
-
-        else {
-
-            resultStatus.textContent =
-                "SAFE URL";
-
-        }
-
-    }
-
 
     /* Confidence */
 
     if (confidenceValue) {
-
         confidenceValue.textContent =
-            `${confidence}%`;
-
+            `${confidence.toFixed(1)}%`;
     }
-
 
     if (confidenceBar) {
-
         confidenceBar.style.width =
-            `${confidence}%`;
-
+            `${Math.min(100, confidence)}%`;
     }
 
+    /* Gauge */
 
-    /* Store normalized values */
+    if (riskGauge) {
 
-    result._frontend = {
+        const circumference = 314;
 
-        verdict:
-            verdict,
+        const offset =
+            circumference -
+            (Math.min(100, score) / 100) *
+            circumference;
 
-        score:
-            score,
+        riskGauge.style.strokeDasharray =
+            `${circumference}`;
 
-        confidence:
-            confidence
+        riskGauge.style.strokeDashoffset =
+            `${offset}`;
+    }
 
-    };
+    if (resultStatus) {
+        resultStatus.textContent =
+            "Analysis Complete";
+    }
 
+    displayFeatures(result);
 
-    console.log(
-        "PhishGuard: Result displayed."
-    );
+    displaySecurityChecks(result);
 
+    displayExplanation(result);
+
+    displayIRAnalysis(result.ir_analysis);
+
+    if (modelStatus) {
+        modelStatus.textContent = result.ml?.classification ? "Available" : "Unavailable";
+    }
+
+    updateReport(result);
+
+    updateDashboardStats();
 }
 
 
-/* ============================================================
-   RISK GAUGE
-   ============================================================ */
+/* =========================================================
+   INFORMATION RETRIEVAL
+   ========================================================= */
 
-function updateRiskGauge(score) {
-
-    if (!riskGauge) {
-
-        return;
-
-    }
-
-
-    if (
-        typeof riskGauge.getTotalLength ===
-        "function"
-    ) {
-
-        try {
-
-            const length =
-                riskGauge.getTotalLength();
-
-
-            riskGauge.style.strokeDasharray =
-                length;
-
-
-            const offset =
-                length -
-                (
-                    length *
-                    (
-                        score / 100
-                    )
-                );
-
-
-            riskGauge.style.strokeDashoffset =
-                offset;
-
-        } catch (error) {
-
-            console.log(
-                "Risk gauge SVG update skipped."
-            );
-
+function displayIRAnalysis(analysis, currentUrl = "", emptyState = "Unavailable") {
+    if (!analysis || typeof analysis !== "object") {
+        if (irOverallStatus) {
+            irOverallStatus.textContent = emptyState;
         }
-
-    }
-
-
-    riskGauge.style.setProperty(
-        "--risk-score",
-        score
-    );
-
-
-    riskGauge.style.setProperty(
-        "--risk-percent",
-        `${score}%`
-    );
-
-}
-
-
-/* ============================================================
-   DISPLAY FEATURES
-   ============================================================ */
-
-function displayFeatures(features) {
-
-    updateFeature(
-        "featureHttps",
-        features.uses_https,
-        "featureHttpsStatus"
-    );
-
-    // HTTP URLs should not display "Secure"
-    if (!features.uses_https) {
-        setText(
-            "featureHttpsStatus",
-            "No HTTPS"
-        );
-    }
-
-
-    updateFeature(
-        "featureIP",
-        features.has_ip_address,
-        "featureIPStatus"
-    );
-
-
-    updateFeature(
-        "featureAt",
-        features.has_at_symbol,
-        "featureAtStatus"
-    );
-
-
-    setText(
-        "featureShortener",
-        "Not checked"
-    );
-
-
-    setText(
-        "featureShortenerStatus",
-        "—"
-    );
-
-
-    setText(
-        "featureLength",
-        features.url_length
-    );
-
-
-    setText(
-        "featureSubdomains",
-        features.subdomain_count
-    );
-
-
-    setText(
-        "featureSpecial",
-        features.special_char_count
-    );
-
-
-    setText(
-        "featureKeywords",
-        features.suspicious_keyword_count
-    );
-
-}
-
-/* ============================================================
-   FEATURE HELPER
-   ============================================================ */
-
-function updateFeature(
-    valueId,
-    value,
-    statusId
-) {
-
-    const valueElement =
-        document.getElementById(
-            valueId
-        );
-
-
-    const statusElement =
-        document.getElementById(
-            statusId
-        );
-
-
-    if (!valueElement) {
-
+        if (irLanguageScore) irLanguageScore.textContent = emptyState === "Analyzing scan" ? "Analyzing..." : "Unavailable";
+        if (irLanguageStatus) irLanguageStatus.textContent = emptyState === "Analyzing scan" ? "Awaiting scan result" : "Unavailable";
+        if (irSuspiciousTerms) irSuspiciousTerms.textContent = "No data available.";
+        if (irPageRankScore) irPageRankScore.textContent = emptyState === "Analyzing scan" ? "Analyzing..." : "Unavailable";
+        if (irPageRankRank) irPageRankRank.textContent = "--";
+        if (irGraphNodes) irGraphNodes.textContent = "--";
+        if (irGraphEdges) irGraphEdges.textContent = "--";
+        if (irPageRankStatus) irPageRankStatus.textContent = emptyState === "Analyzing scan" ? "Awaiting scan result" : "Insufficient graph data";
+        if (irRecommendations) irRecommendations.innerHTML = "<li>No similar URLs found.</li>";
+        if (irRecommendationStatus) irRecommendationStatus.textContent = emptyState === "Analyzing scan" ? "Awaiting scan result" : "Unavailable";
         return;
-
     }
 
+    const language = analysis.language_model || {};
+    const pageRank = analysis.pagerank || {};
+    const recommendations = analysis.content_recommendations || {};
+    const languageAvailable = language.status === "available";
+    const languageInsufficient = language.status !== "available"
+        && /required|insufficient/i.test(String(language.message || ""));
+    const graphNodeCount = Number(pageRank.graph_nodes);
+    const graphEdgeCount = Number(pageRank.graph_edges);
+    const pageRankAvailable = pageRank.status === "available"
+        && Number.isFinite(graphNodeCount)
+        && graphNodeCount > 1
+        && Number.isFinite(graphEdgeCount)
+        && graphEdgeCount > 0;
+    const recommendationsAvailable = recommendations.status === "available";
 
-    if (
-        typeof value === "boolean"
-    ) {
-
-        valueElement.textContent =
-            value
-                ? "Detected"
-                : "Not Detected";
-
-
-        if (statusElement) {
-
-            statusElement.classList.remove(
-                "secure",
-                "detected"
-            );
-
-
-            if (value) {
-
-                statusElement.textContent =
-                    "Detected";
-
-                statusElement.classList.add(
-                    "detected"
-                );
-
-            }
-
-            else {
-
-                /*
-                 * HTTPS is a special case.
-                 * "Not detected" should not be shown
-                 * as "Secure".
-                 */
-
-                if (valueId === "featureHttps") {
-
-                    statusElement.textContent =
-                        "No HTTPS";
-
-                }
-
-                else {
-
-                    statusElement.textContent =
-                        "Secure";
-
-                    statusElement.classList.add(
-                        "secure"
-                    );
-
-                }
-
-            }
-
-        }
-
+    if (irOverallStatus) {
+        irOverallStatus.textContent = analysis.status === "available"
+            ? `IR analysis calculated from ${safeNumber(analysis.corpus_size, 0)} historical URLs.`
+            : analysis.message || "IR analysis is temporarily unavailable.";
     }
 
-    else {
-
-        valueElement.textContent =
-            value ?? "--";
-
+    const languageScore = language.score;
+    if (irLanguageScore) {
+        irLanguageScore.textContent = languageAvailable && typeof languageScore === "number" && Number.isFinite(languageScore)
+            ? `${(languageScore * 100).toFixed(1)}%`
+            : languageInsufficient ? "Insufficient data" : "Unavailable";
+    }
+    if (irLanguageStatus) {
+        irLanguageStatus.textContent = languageAvailable
+            ? `${safeNumber(language.training_documents, 0)} labeled history records`
+            : languageInsufficient ? "Insufficient corpus data" : language.message || "Language model unavailable";
+    }
+    if (irSuspiciousTerms) {
+        const terms = Array.isArray(language.suspicious_terms)
+            ? language.suspicious_terms.filter(term => typeof term === "string" && term.trim())
+            : [];
+        irSuspiciousTerms.textContent = terms.length ? terms.join(", ") : "No corpus-derived terms identified.";
     }
 
-}
-
-
-/* ============================================================
-   TEXT HELPER
-   ============================================================ */
-
-function setText(
-    id,
-    value
-) {
-
-    const element =
-        document.getElementById(id);
-
-
-    if (!element) {
-
-        return;
-
+    const graphScore = pageRank.score;
+    if (irPageRankScore) {
+        irPageRankScore.textContent = pageRankAvailable && typeof graphScore === "number" && Number.isFinite(graphScore)
+            ? graphScore.toFixed(6)
+            : pageRank.status === "available" ? "Insufficient data" : "Unavailable";
+    }
+    if (irPageRankRank) {
+        const rank = Number(pageRank.rank);
+        irPageRankRank.textContent = pageRankAvailable && Number.isInteger(rank) && rank > 0 ? `#${rank}` : "--";
+    }
+    if (irPageRankStatus) {
+        irPageRankStatus.textContent = pageRankAvailable
+            ? "PageRank calculated over the local relationship graph"
+            : pageRank.status === "available" ? "Insufficient graph data" : pageRank.message || "PageRank unavailable";
+    }
+    if (irGraphDetails) {
+        irGraphDetails.textContent = "Calculated from URL/domain relationships in local scan history; not Google's live PageRank.";
+    }
+    if (irGraphNodes) {
+        irGraphNodes.textContent = Number.isFinite(graphNodeCount) ? String(graphNodeCount) : "--";
+    }
+    if (irGraphEdges) {
+        irGraphEdges.textContent = Number.isFinite(graphEdgeCount) ? String(graphEdgeCount) : "--";
     }
 
-
-    if (
-        value === undefined ||
-        value === null
-    ) {
-
-        element.textContent =
-            "--";
-
-    }
-
-    else {
-
-        element.textContent =
-            value;
-
-    }
-
-}
-
-
-/* ============================================================
-   SECURITY REASONS
-   ============================================================ */
-
-function displayReasons(reasons) {
-
-    if (!reasonList) {
-
-        return;
-
-    }
-
-
-    reasonList.innerHTML =
-        "";
-
-
-    if (
-        !Array.isArray(reasons) ||
-        reasons.length === 0
-    ) {
-
-        const item =
-            document.createElement(
-                "span"
-            );
-
-
-        item.className =
-            "reason-item";
-
-
-        item.textContent =
-            "No additional security factors were returned.";
-
-
-        reasonList.appendChild(
+    let displayedRecommendationCount = 0;
+    if (irRecommendations) {
+        irRecommendations.innerHTML = "";
+        const matches = Array.isArray(recommendations.recommendations)
+            ? recommendations.recommendations
+            : [];
+        const normalizedCurrentUrl = normalizeURLForMatch(currentUrl);
+        const validMatches = matches.filter(item =>
             item
+            && typeof item.url === "string"
+            && item.url.trim()
+            && normalizeURLForMatch(item.url) !== normalizedCurrentUrl
+            && typeof item.similarity === "number"
+            && Number.isFinite(item.similarity)
+            && item.similarity > 0
+            && item.similarity <= 1
         );
+        displayedRecommendationCount = validMatches.length;
 
-
-        if (explanationTitle) {
-
-            explanationTitle.textContent =
-                "Analysis completed";
-
+        if (!validMatches.length) {
+            const item = document.createElement("li");
+            item.textContent = "No similar URLs found.";
+            irRecommendations.appendChild(item);
+        } else {
+            validMatches.slice(0, 3).forEach(match => {
+                const item = document.createElement("li");
+                const url = document.createElement("span");
+                const similarity = document.createElement("strong");
+                const percentage = match.similarity * 100;
+                url.className = "ir-recommendation-url";
+                url.textContent = match.url;
+                similarity.textContent = `${Math.max(0, Math.min(100, percentage)).toFixed(1)}%`;
+                item.append(url, similarity);
+                irRecommendations.appendChild(item);
+            });
         }
+    }
+    if (irRecommendationStatus) {
+        irRecommendationStatus.textContent = recommendationsAvailable
+            ? displayedRecommendationCount
+                ? `${displayedRecommendationCount} historical match${displayedRecommendationCount === 1 ? "" : "es"}`
+                : "No similar URLs found."
+            : recommendations.message || "Recommendations unavailable";
+    }
+}
+
+function normalizeURLForMatch(value) {
+    try {
+        const candidate = /^https?:\/\//i.test(String(value || ""))
+            ? String(value).trim()
+            : `https://${String(value || "").trim()}`;
+        const parsed = new URL(candidate);
+        const pathname = parsed.pathname.replace(/\/+$/, "");
+        return `${parsed.protocol}//${parsed.host}${pathname}${parsed.search}`.toLowerCase();
+    } catch {
+        return "";
+    }
+}
 
 
-        if (explanationText) {
+/* =========================================================
+   FEATURES
+   ========================================================= */
 
-            explanationText.textContent =
-                "The backend completed the security analysis.";
+function displayFeatures(result) {
 
-        }
+    const security = result.url_security || {};
+    const url = result.url || "";
 
-
-        return;
-
+    if (featureHttpsStatus) {
+        featureHttpsStatus.textContent =
+            security.uses_https ? "Secure" : "Warning";
     }
 
+    if (featureLengthStatus) {
+        featureLengthStatus.textContent =
+            safeNumber(security.url_length, url.length);
+    }
+
+    if (featureIPStatus) {
+        featureIPStatus.textContent =
+            security.has_ip_address ? "Detected" : "Not Detected";
+    }
+
+    if (featureAtStatus) {
+        featureAtStatus.textContent =
+            security.has_at_symbol ? "Detected" : "Not Detected";
+    }
+
+    if (featureSubdomainStatus) {
+        featureSubdomainStatus.textContent =
+            safeNumber(security.subdomain_count, 0);
+    }
+
+    if (featureSpecialStatus) {
+        featureSpecialStatus.textContent =
+            safeNumber(security.special_char_count, 0);
+    }
+
+    if (featureShortenerStatus) {
+        featureShortenerStatus.textContent =
+            isShortenedURL(url) ? "Detected" : "Not Detected";
+    }
+
+    const keywordCount = safeNumber(security.suspicious_keyword_count, 0);
+
+    if (featureKeywordsStatus) {
+        featureKeywordsStatus.textContent =
+            keywordCount > 0 ? `${keywordCount} Detected` : "None Detected";
+    }
+}
+
+
+/* =========================================================
+   SECURITY CHECKS
+   ========================================================= */
+
+function setSecurityCheck(element, text, type) {
+
+    if (!element) return;
+
+    element.textContent = text;
+
+    element.classList.remove(
+        "secure",
+        "warning",
+        "danger"
+    );
+
+    element.classList.add(type);
+}
+
+
+function displaySecurityChecks(data) {
+
+    if (!data) {
+        return;
+    }
+
+    const security = data.url_security || {};
+    const dns = data.dns || {};
+    const ssl = data.ssl || {};
+    const ml = data.ml || {};
+
+    setSecurityCheck(
+        dnsCheckStatus,
+        dns.resolves ? "Resolved" : "Not Resolved",
+        dns.resolves ? "secure" : "warning"
+    );
+
+    setSecurityCheck(
+        sslCheckStatus,
+        ssl.valid ? "Valid" : "Invalid / Unavailable",
+        ssl.valid ? "secure" : "warning"
+    );
+
+    setSecurityCheck(
+        urlCheckStatus,
+        security.has_ip_address || security.has_at_symbol || security.suspicious_keyword_count > 0
+            ? "Warning"
+            : "Secure",
+        security.has_ip_address || security.has_at_symbol || security.suspicious_keyword_count > 0
+            ? "warning"
+            : "secure"
+    );
+
+    const mlClassification = String(ml.classification || "").toLowerCase();
+    const mlPhishing = mlClassification.includes("phish");
+    const mlLegitimate = mlClassification.includes("legitimate");
+    setSecurityCheck(
+        mlCheckStatus,
+        mlPhishing ? "Phishing" : mlLegitimate ? "Legitimate" : "Unavailable",
+        mlPhishing ? "danger" : mlLegitimate ? "secure" : "warning"
+    );
+
+    if (dnsCheckIcon) {
+        dnsCheckIcon.textContent = dns.resolves ? "✓" : "!";
+    }
+
+    if (sslCheckIcon) {
+        sslCheckIcon.textContent = ssl.valid ? "✓" : "!";
+    }
+
+    if (urlCheckIcon) {
+        urlCheckIcon.textContent = "✓";
+    }
+
+    if (mlCheckIcon) {
+        mlCheckIcon.textContent = mlPhishing ? "!" : mlLegitimate ? "✓" : "?";
+    }
+}
+
+
+/* =========================================================
+   EXPLANATION
+   ========================================================= */
+
+function displayExplanation(result) {
+
+    const explanationValue = normalizeExplanation(
+        result?.risk_explanation || result?.explanation || ""
+    );
+    const resultMismatch = getMLVerdictComparison(result);
+
+    const fallbackText =
+        result?.valid === false
+            ? explanationValue || "The scan could not be completed."
+            : result?.prediction === "Phishing"
+            ? "The security analysis identified indicators associated with phishing."
+            : result?.prediction === "Unable to verify URL"
+                ? "The hostname did not resolve, so this URL cannot be verified as safe."
+                : "The URL passed the available security checks with a low calculated risk.";
+
+    const displayText = [resultMismatch, explanationValue || fallbackText]
+        .filter(Boolean)
+        .join(" ");
 
     if (explanationTitle) {
-
         explanationTitle.textContent =
-            "Security factors identified";
-
+            resultMismatch
+                ? "ML result and overall assessment differ"
+                : result?.valid === false
+                    ? result.failureType === "scanning"
+                        ? "Analysis in progress"
+                        : result.failureType === "error" ? "Scan unavailable" : "URL validation failed"
+                    : result.prediction === "Phishing"
+                ? "Potential phishing indicators detected"
+                : "No major phishing indicators detected";
     }
 
+    if (aiExplanation) {
+        aiExplanation.textContent = displayText;
+    }
 
     if (explanationText) {
-
-        explanationText.textContent =
-            "The following factors were returned by the security analysis.";
-
+        explanationText.textContent = displayText;
     }
 
+    if (!reasonList) {
+        return;
+    }
 
-    reasons.forEach(
-        reason => {
+    reasonList.innerHTML = "";
 
-            const item =
-                document.createElement(
-                    "span"
-                );
+    if (result?.valid === false) {
+        const li = document.createElement("li");
+        li.textContent = explanationValue || "No data available.";
+        reasonList.appendChild(li);
+        return;
+    }
 
+    let reasons = [];
 
-            item.className =
-                "reason-item";
+    if (Array.isArray(result.reasons)) {
+        reasons = result.reasons;
+    }
 
+    if (reasons.length === 0) {
 
-            item.textContent =
-                reason;
+        const li = document.createElement("li");
 
+        li.textContent =
+            result.prediction === "Phishing"
+                ? "Potentially suspicious URL characteristics were detected."
+                : "No additional suspicious indicators were reported.";
 
-            reasonList.appendChild(
-                item
-            );
+        reasonList.appendChild(li);
 
+        return;
+    }
+
+    reasons.forEach(reason => {
+
+        if (
+            reason !== null &&
+            reason !== undefined &&
+            String(reason).trim()
+        ) {
+
+            const li =
+                document.createElement("li");
+
+            li.textContent =
+                String(reason);
+
+            reasonList.appendChild(li);
         }
-    );
+    });
+}
 
+function getMLVerdictComparison(result) {
+    if (!result || result.valid === false) {
+        return "";
+    }
+
+    const mlClassification = String(result.ml?.classification || "").toLowerCase();
+    const mlVerdict = mlClassification.includes("phish")
+        ? "Phishing"
+        : mlClassification.includes("legitimate")
+            ? "Legitimate"
+            : "";
+    if (!mlVerdict) {
+        return "";
+    }
+
+    const risk = Math.round(safeNumber(result.risk_score, 0));
+    if (mlVerdict === "Legitimate" && result.prediction === "Phishing") {
+        return `The ML model classified the URL as legitimate, but additional security indicators increased the overall risk score to ${risk}/100, resulting in a potentially dangerous overall assessment.`;
+    }
+    if (mlVerdict === "Phishing" && result.prediction === "Safe") {
+        return `The ML model classified the URL as phishing, while the combined security assessment calculated an overall risk score of ${risk}/100.`;
+    }
+    if (mlVerdict === "Legitimate" && result.verifiable === false) {
+        return `The ML model classified the URL as legitimate, but the hostname could not be verified; this result is not presented as safe. The overall risk score is ${risk}/100.`;
+    }
+    return "";
+}
+
+function getIRReportSummary(analysis, currentUrl) {
+    if (!analysis || typeof analysis !== "object") {
+        return "IR analysis unavailable.";
+    }
+
+    const language = analysis.language_model || {};
+    const pageRank = analysis.pagerank || {};
+    const recommendations = analysis.content_recommendations || {};
+    const languageScore = Number(language.score);
+    const suspiciousTerms = Array.isArray(language.suspicious_terms)
+        ? language.suspicious_terms.filter(term => typeof term === "string" && term.trim())
+        : [];
+    const languageText = language.status === "available" && Number.isFinite(languageScore)
+        ? `Language-model phishing likelihood ${(languageScore * 100).toFixed(1)}% from ${safeNumber(language.training_documents, 0)} labeled records; phishing-associated terms: ${suspiciousTerms.length ? suspiciousTerms.join(", ") : "none identified"}`
+        : /required|insufficient/i.test(String(language.message || ""))
+            ? "Insufficient corpus data"
+            : "Language model unavailable";
+
+    const graphNodes = Number(pageRank.graph_nodes);
+    const graphEdges = Number(pageRank.graph_edges);
+    const graphScore = Number(pageRank.score);
+    const graphText = pageRank.status === "available"
+        && graphNodes > 1
+        && graphEdges > 0
+        && Number.isFinite(graphScore)
+        ? `PageRank ${graphScore.toFixed(6)}, rank #${safeNumber(pageRank.rank, 0)}, ${graphNodes} URLs/nodes and ${graphEdges} relationships/edges`
+        : "Insufficient graph data";
+
+    const currentKey = normalizeURLForMatch(currentUrl);
+    const matchCount = (Array.isArray(recommendations.recommendations)
+        ? recommendations.recommendations
+        : []).filter(item => item
+            && typeof item.url === "string"
+            && normalizeURLForMatch(item.url) !== currentKey
+            && typeof item.similarity === "number"
+            && Number.isFinite(item.similarity)
+            && item.similarity > 0
+            && item.similarity <= 1
+        ).length;
+
+    return `${languageText}; ${graphText}; ${matchCount} similar historical URL${matchCount === 1 ? "" : "s"}.`;
 }
 
 
-/* ============================================================
-   SECURITY REPORT
-   ============================================================ */
+/* =========================================================
+   REPORT
+   ========================================================= */
 
 function updateReport(result) {
 
-    const frontend =
-        result._frontend || {};
+    if (!result || result.valid === false) {
+        const failureType = result?.failureType || "invalid";
+        const isInvalid = failureType === "invalid";
+        const isScanning = failureType === "scanning";
 
+        if (reportUrl) {
+            reportUrl.textContent = result?.url || "--";
+        }
 
-    const verdict =
-        frontend.verdict ||
-        getVerdict(
-            result.classification
-        );
+        if (reportTime) {
+            reportTime.textContent = formatDate();
+        }
 
+        if (reportVerdict) {
+            reportVerdict.textContent = isInvalid ? "Invalid URL" : isScanning ? "Analyzing" : "Unavailable";
+        }
 
-    const score =
-        frontend.score ??
-        Number(
-            result.risk_score || 0
-        );
+        if (reportRiskScore) {
+            reportRiskScore.textContent = "--";
+        }
 
+        if (reportConfidence) {
+            reportConfidence.textContent = "--";
+        }
 
-    let confidence =
-        frontend.confidence ??
-        Number(
-            result.confidence || 0
-        );
+        if (reportStatus) {
+            reportStatus.textContent = isInvalid ? "Validation Failed" : isScanning ? "Scanning" : "Backend Error";
+        }
 
+        if (reportBadge) {
+            reportBadge.textContent = isInvalid ? "INVALID URL" : isScanning ? "SCANNING" : "UNAVAILABLE";
+            reportBadge.classList.remove("warning", "danger", "secure");
+            reportBadge.classList.add(isInvalid ? "warning" : isScanning ? "warning" : "danger");
+        }
 
-    if (
-        confidence <= 1
-    ) {
+        if (reportSummary) {
+            reportSummary.textContent = result?.risk_explanation || (isInvalid
+                ? "Invalid URL. Enter a valid hostname such as https://google.com"
+                : isScanning
+                    ? "The current scan is in progress."
+                    : "The backend could not complete this scan.");
+        }
 
-        confidence *= 100;
+        if (reportIRSummary) {
+            reportIRSummary.textContent = isScanning ? "IR analysis will appear when scanning completes." : "IR analysis unavailable.";
+        }
 
+        return;
     }
 
+    if (reportUrl) {
+        reportUrl.textContent = result.url || "--";
+    }
 
-    confidence =
-        Math.round(
-            confidence * 100
-        ) / 100;
+    if (reportTime) {
+        reportTime.textContent = formatDate();
+    }
 
+    if (reportVerdict) {
+        reportVerdict.textContent = result.prediction;
+    }
 
-    setText(
-        "reportUrl",
-        result.url
-    );
+    if (reportRiskScore) {
+        reportRiskScore.textContent =
+            Math.round(safeNumber(result.risk_score, 0));
+    }
 
+    if (reportConfidence) {
+        reportConfidence.textContent =
+            `${safeNumber(result.confidence, 0).toFixed(1)}%`;
+    }
 
-    setText(
-        "reportTime",
-        formatDateTime(
-            new Date()
-        )
-    );
+    if (reportStatus) {
+        reportStatus.textContent = result.verifiable === false ? "Unverified" : "Completed";
+    }
 
+    if (reportBadge) {
+        reportBadge.textContent =
+            result.prediction === "Phishing" ? "THREAT DETECTED" : result.verifiable === false ? "UNVERIFIED" : "SAFE";
+        reportBadge.classList.remove("warning", "danger", "secure");
+        reportBadge.classList.add(
+            result.prediction === "Phishing" ? "danger" : result.verifiable === false ? "warning" : "secure"
+        );
+    }
 
-    setText(
-        "reportVerdict",
-        verdict
-    );
+    if (reportSummary) {
+        reportSummary.textContent = getMLVerdictComparison(result)
+            || (result.prediction === "Phishing"
+                ? "The URL has been classified as potentially dangerous."
+                : result.verifiable === false
+                    ? "The hostname did not resolve, so the URL cannot be verified as safe."
+                    : "The URL has been classified as low risk by the security analysis.");
+    }
 
-
-    setText(
-        "reportRisk",
-        `${score.toFixed(2)} / 100`
-    );
-
-
-    setText(
-        "reportConfidence",
-        `${confidence}%`
-    );
-
-
-    setText(
-        "reportStatus",
-        "Analysis Complete"
-    );
-
-    setText(
-        "reportBadge",
-        "ANALYSIS COMPLETE"
-    );
-
-
-    setText(
-        "reportSummary",
-        createSummary(
-            result,
-            verdict,
-            score
-        )
-    );
-
+    if (reportIRSummary) {
+        reportIRSummary.textContent = getIRReportSummary(result.ir_analysis, result.url);
+    }
 }
 
 
-/* ============================================================
-   CREATE SUMMARY
-   ============================================================ */
-
-function createSummary(
-    result,
-    verdict,
-    score
-) {
-
-    if (
-        verdict === "Phishing"
-    ) {
-
-        return (
-            `The URL was classified as high risk with a ` +
-            `risk score of ${score.toFixed(2)} out of 100. ` +
-            `The assessment combines machine-learning evidence ` +
-            `with DNS, SSL, and URL security checks.`
-        );
-
-    }
-
-
-    if (
-        verdict === "Suspicious"
-    ) {
-
-        return (
-            `The URL was classified as suspicious with a ` +
-            `risk score of ${score.toFixed(2)} out of 100. ` +
-            `The assessment combines machine-learning evidence ` +
-            `with DNS, SSL, and URL security checks.`
-        );
-
-    }
-
-
-    return (
-        `The URL received a low-risk assessment with a ` +
-        `risk score of ${score.toFixed(2)} out of 100. ` +
-        `The assessment combines machine-learning evidence ` +
-        `with DNS, SSL, and URL security checks.`
-    );
-
-}
-
-
-/* ============================================================
-   GET VERDICT
-   ============================================================ */
-
-function getVerdict(
-    classification
-) {
-
-    const value =
-        String(
-            classification || ""
-        ).toLowerCase();
-
-
-    if (
-        value === "high_risk" ||
-        value === "medium_risk" ||
-        value === "phishing" ||
-        value === "malicious"
-    ) {
-
-        return "Phishing";
-
-    }
-
-
-    if (
-        value === "suspicious"
-    ) {
-
-        return "Suspicious";
-
-    }
-
-
-    return "Safe";
-
-}
-
-
-/* ============================================================
+/* =========================================================
    HISTORY
-   ============================================================ */
+   ========================================================= */
 
-function addToHistory(result) {
+function getHistory() {
 
-    const verdict =
-        getVerdict(
-            result.classification
-        );
+    try {
+
+        const saved =
+            localStorage.getItem(HISTORY_KEY);
+
+        const parsed = saved ? JSON.parse(saved) : [];
+        return Array.isArray(parsed) ? parsed : [];
+
+    } catch {
+        return [];
+    }
+}
 
 
-    const entry = {
+function saveHistory(result) {
 
-        id:
-            Date.now(),
+    const history =
+        getHistory();
 
-        url:
-            result.url || "--",
+    history.unshift({
+
+        url: result.url,
+
+        riskScore:
+            Math.round(
+                safeNumber(
+                    result.risk_score,
+                    0
+                )
+            ),
+
+        prediction:
+            result.prediction,
+
+        confidence:
+            safeNumber(
+                result.confidence,
+                0
+            ),
 
         time:
-            formatDateTime(
-                new Date()
-            ),
+            formatDate()
 
-        risk:
-            Number(
-                result.risk_score || 0
-            ),
+    });
 
-        verdict:
-            verdict
-
-    };
-
-
-    scanHistory =
-        scanHistory.filter(
-            item =>
-                !(
-                    item.url === entry.url &&
-                    item.time === entry.time
-                )
-        );
-
-
-    scanHistory.unshift(
-        entry
+    localStorage.setItem(
+        HISTORY_KEY,
+        JSON.stringify(
+            history.slice(0, 50)
+        )
     );
-
-
-    if (
-        scanHistory.length > 50
-    ) {
-
-        scanHistory =
-            scanHistory.slice(
-                0,
-                50
-            );
-
-    }
-
-
-    saveHistory();
 
     renderHistory();
 
-    updateClearButton();
-
+    updateDashboardStats();
 }
 
-
-/* ============================================================
-   RENDER HISTORY
-   ============================================================ */
 
 function renderHistory() {
 
-    if (!historyTableBody) {
+    const history =
+        getHistory();
+    const filteredHistory = history.filter(item => {
+        if (activeHistoryFilter === "threat") {
+            return item.prediction === "Phishing";
+        }
+        if (activeHistoryFilter === "safe") {
+            return item.prediction === "Safe";
+        }
+        return true;
+    });
 
-        return;
+    const shouldShowEmptyState = history.length === 0;
 
+    if (emptyHistory) {
+        emptyHistory.style.display = shouldShowEmptyState ? "block" : "none";
     }
 
+    if (historyTableBody) {
 
-    historyTableBody.innerHTML =
-        "";
+        historyTableBody.innerHTML = "";
 
-
-    let filtered =
-        scanHistory;
-
-
-    if (
-        currentFilter !== "all"
-    ) {
-
-        filtered =
-            scanHistory.filter(
-                item => {
-
-                    const verdict =
-                        String(
-                            item.verdict || ""
-                        ).toLowerCase();
-
-
-                    if (
-                        currentFilter === "safe"
-                    ) {
-
-                        return (
-                            verdict === "safe" ||
-                            verdict === "legitimate"
-                        );
-
-                    }
-
-
-                    if (
-                        currentFilter === "phishing"
-                    ) {
-
-                        return (
-                            verdict === "phishing" ||
-                            verdict === "suspicious"
-                        );
-
-                    }
-
-
-                    return true;
-
-                }
-            );
-
-    }
-
-
-    if (
-        filtered.length === 0
-    ) {
-
-        const row =
-            document.createElement(
-                "tr"
-            );
-
-
-        row.innerHTML = `
-            <td colspan="5">
-                <div class="empty-history">
-                    <div class="empty-history-icon">◇</div>
-                    <strong>No scans found</strong>
-                    <span>
-                        Analyze a URL to create your scan history.
-                    </span>
-                </div>
-            </td>
-        `;
-
-
-        historyTableBody.appendChild(
-            row
-        );
-
-
-        return;
-
-    }
-
-
-    filtered.forEach(
-        item => {
+        filteredHistory.forEach(item => {
 
             const row =
-                document.createElement(
-                    "tr"
-                );
-
-
-            const verdict =
-                String(
-                    item.verdict || "Unknown"
-                );
-
-
-            const lowerVerdict =
-                verdict.toLowerCase();
-
-
-            let badgeClass =
-                "pending";
-
-
-            if (
-                lowerVerdict === "safe" ||
-                lowerVerdict === "legitimate"
-            ) {
-
-                badgeClass =
-                    "safe";
-
-            }
-
-            else if (
-                lowerVerdict === "phishing" ||
-                lowerVerdict === "suspicious"
-            ) {
-
-                badgeClass =
-                    "phishing";
-
-            }
-
-
-            const risk =
-                Number(
-                    item.risk
-                );
-
-
-            const riskText =
-                Number.isNaN(risk)
-                    ? "--"
-                    : risk.toFixed(2);
-
+                document.createElement("tr");
 
             row.innerHTML = `
-
-                <td>
-                    <div
-                        class="history-url"
-                        title="${escapeHTML(item.url)}"
-                    >
-                        ${escapeHTML(item.url)}
-                    </div>
-                </td>
-
-                <td>
-                    ${escapeHTML(item.time)}
-                </td>
-
-                <td>
-                    ${riskText}/100
-                </td>
-
-                <td>
-                    <span
-                        class="history-badge ${badgeClass}"
-                    >
-                        ${escapeHTML(verdict)}
-                    </span>
-                </td>
-
-                <td>
-                    <span
-                        class="history-badge ${badgeClass}"
-                    >
-                        Complete
-                    </span>
-                </td>
-
+                <td>${escapeHTML(item.time)}</td>
+                <td>${escapeHTML(item.url)}</td>
+                <td>${escapeHTML(item.riskScore)}</td>
+                <td>${escapeHTML(item.prediction)}</td>
+                <td>Completed</td>
             `;
 
+            historyTableBody.appendChild(row);
+        });
 
-            historyTableBody.appendChild(
-                row
-            );
-
+        if (history.length > 0 && filteredHistory.length === 0) {
+            const row = document.createElement("tr");
+            const cell = document.createElement("td");
+            cell.colSpan = 5;
+            cell.className = "history-filter-empty";
+            cell.textContent = activeHistoryFilter === "threat"
+                ? "No threat scans found."
+                : activeHistoryFilter === "safe"
+                    ? "No safe scans found."
+                    : "No scans match this filter.";
+            row.appendChild(cell);
+            historyTableBody.appendChild(row);
         }
-    );
-
-}
-
-
-/* ============================================================
-   LOCAL STORAGE
-   ============================================================ */
-
-function saveHistory() {
-
-    try {
-
-        localStorage.setItem(
-            "phishguardHistory",
-            JSON.stringify(
-                scanHistory
-            )
-        );
-
-    } catch (error) {
-
-        console.error(
-            "Could not save history:",
-            error
-        );
-
     }
 
-}
+    if (historyList) {
 
+        historyList.innerHTML = "";
 
-/* ============================================================
-   LOAD HISTORY
-   ============================================================ */
+        if (history.length === 0 || filteredHistory.length === 0) {
 
-function loadHistory() {
-
-    try {
-
-        const stored =
-            localStorage.getItem(
-                "phishguardHistory"
-            );
-
-
-        if (!stored) {
-
-            scanHistory = [];
+            historyList.innerHTML =
+                `<p>${history.length === 0 ? "No Scan History" : "No scans match this filter."}</p>`;
 
             return;
-
         }
 
+        filteredHistory.forEach(item => {
 
-        const parsed =
-            JSON.parse(
-                stored
+            const div =
+                document.createElement("div");
+
+            div.className =
+                "history-item";
+
+            div.innerHTML = `
+                <strong>${escapeHTML(item.url)}</strong>
+                <span>Risk: ${escapeHTML(item.riskScore)}</span>
+                <span>${escapeHTML(item.prediction)}</span>
+            `;
+
+            historyList.appendChild(div);
+        });
+    }
+}
+
+
+/* =========================================================
+   DASHBOARD STATS
+   ========================================================= */
+
+function updateDashboardStats() {
+
+    const history =
+        getHistory();
+
+    const total =
+        history.length;
+
+    const threats =
+        history.filter(
+            item =>
+                item.prediction === "Phishing"
+        ).length;
+
+    const safe =
+        history.filter(
+            item =>
+                item.prediction === "Safe"
+        ).length;
+
+    if (totalScans) {
+        totalScans.textContent =
+            total;
+    }
+
+    if (threatsDetected) {
+        threatsDetected.textContent =
+            threats;
+    }
+
+    if (safeUrls) {
+        safeUrls.textContent =
+            safe;
+    }
+}
+
+
+/* =========================================================
+   MAIN SCAN FUNCTION
+   ========================================================= */
+
+async function scanURL() {
+
+    const validation =
+        validateURL(
+            urlInput?.value
+        );
+
+    if (!validation.valid) {
+
+        const invalidResult = {
+            valid: false,
+            failureType: "invalid",
+            url: urlInput?.value?.trim() || "",
+            prediction: "Invalid URL",
+            risk_explanation: "Invalid URL. Enter a valid hostname such as https://google.com"
+        };
+        displayResult(invalidResult);
+
+        showScannerMessage(
+            invalidResult.risk_explanation,
+            "error"
+        );
+
+        return;
+    }
+
+    const url =
+        validation.url;
+
+    hideScannerMessage();
+
+    setLoading(true);
+    displayResult({
+        valid: false,
+        failureType: "scanning",
+        url,
+        prediction: "Analyzing",
+        risk_explanation: "Analysis in progress. Previous scan data has been cleared."
+    });
+
+    try {
+
+        const backendData =
+            await analyzeWithBackend(url);
+
+        const result =
+            convertBackendResult(
+                backendData
             );
 
+        displayResult(result);
 
-        if (
-            Array.isArray(parsed)
-        ) {
-
-            scanHistory =
-                parsed
-                    .filter(
-                        item => {
-
-                            /*
-                             * Remove old records created
-                             * before the current risk engine.
-                             * These records have a 0.00 risk score
-                             * and were incorrectly marked Safe.
-                             */
-
-                            const risk =
-                                Number(
-                                    item.risk
-                                );
-
-
-                            return !(
-                                risk === 0 &&
-                                item.verdict === "Safe"
-                            );
-
-                        }
-                    )
-                    .map(
-                        item => ({
-
-                            id:
-                                item.id ||
-                                Date.now(),
-
-                            url:
-                                item.url ||
-                                "--",
-
-                            time:
-                                item.time ||
-                                "--",
-
-                            risk:
-                                item.risk ??
-                                "--",
-
-                            verdict:
-                                item.verdict ||
-                                "Unknown"
-
-                        })
-                    );
-
-
-            /*
-             * Save the cleaned history so the
-             * obsolete records do not return later.
-             */
-
-            saveHistory();
-
+        if (!result.valid) {
+            showScannerMessage(
+                result.risk_explanation || "Invalid URL. Enter a valid hostname such as https://google.com",
+                "error"
+            );
+            return;
         }
 
-        else {
+        saveHistory(result);
 
-            scanHistory = [];
-
-        }
+        showScannerMessage(
+            "URL analysis completed successfully.",
+            "success"
+        );
 
     } catch (error) {
 
-        console.error(
-            "Could not load history:",
-            error
-        );
-
-
-        scanHistory = [];
-
-    }
-
-}
-
-
-/* ============================================================
-   HISTORY CONTROLS
-   ============================================================ */
-
-function setupHistoryControls() {
-
-    if (clearHistoryBtn) {
-
-        clearHistoryBtn.addEventListener(
-            "click",
-            clearHistory
-        );
-
-    }
-
-
-    filterButtons.forEach(
-        button => {
-
-            button.addEventListener(
-                "click",
-                () => {
-
-                    filterButtons.forEach(
-                        btn => {
-
-                            btn.classList.remove(
-                                "active"
-                            );
-
-                        }
-                    );
-
-
-                    button.classList.add(
-                        "active"
-                    );
-
-
-                    currentFilter =
-                        button.dataset.filter ||
-                        "all";
-
-
-                    renderHistory();
-
-                }
-            );
-
+        if (error?.status === 400) {
+            const invalidResult = {
+                valid: false,
+                failureType: "invalid",
+                url,
+                prediction: "Invalid URL",
+                risk_explanation: "Invalid URL. Enter a valid hostname such as https://google.com"
+            };
+            displayResult(invalidResult);
+            showScannerMessage(invalidResult.risk_explanation, "error");
+            return;
         }
-    );
 
+        console.warn("PhishGuard scan could not complete:", error);
+
+        const statusMatch = (error?.message || "").match(/Backend error: (\d+)/);
+        const statusCode = statusMatch ? Number(statusMatch[1]) : null;
+
+        const message =
+            statusCode === 500
+                ? "Security scan failed. Check the backend logs for details."
+                : "Unable to connect to the security backend. Make sure the backend is running on port 8000.";
+
+        displayResult({
+            valid: false,
+            failureType: "error",
+            url,
+            prediction: "Scan Unavailable",
+            risk_explanation: message
+        });
+        showScannerMessage(message, "error");
+
+    } finally {
+
+        setLoading(false);
+    }
 }
 
 
-/* ============================================================
+/* =========================================================
+   CLEAR INPUT
+   ========================================================= */
+
+function clearURLInput() {
+
+    if (urlInput) {
+        urlInput.value = "";
+        urlInput.focus();
+    }
+
+    hideScannerMessage();
+}
+
+
+/* =========================================================
    CLEAR HISTORY
-   ============================================================ */
+   ========================================================= */
 
 function clearHistory() {
 
-    if (
-        scanHistory.length === 0
-    ) {
+    localStorage.removeItem(
+        HISTORY_KEY
+    );
 
-        return;
-
-    }
-
-
-    const confirmed =
-        confirm(
-            "Are you sure you want to clear all scan history?"
-        );
-
-
-    if (!confirmed) {
-
-        return;
-
-    }
-
-
-    scanHistory = [];
-
-    saveHistory();
+    activeHistoryFilter = "all";
+    historyFilterButtons.forEach(button => {
+        const selected = button.dataset.filter === "all";
+        button.classList.toggle("active", selected);
+        button.setAttribute("aria-pressed", String(selected));
+    });
 
     renderHistory();
 
-    updateClearButton();
+    updateDashboardStats();
+}
 
+function setupHistoryFilters() {
+    historyFilterButtons.forEach(button => {
+        button.setAttribute("aria-pressed", String(button.dataset.filter === activeHistoryFilter));
+        button.addEventListener("click", () => {
+            activeHistoryFilter = button.dataset.filter || "all";
+            historyFilterButtons.forEach(filterButton => {
+                const selected = filterButton === button;
+                filterButton.classList.toggle("active", selected);
+                filterButton.setAttribute("aria-pressed", String(selected));
+            });
+            renderHistory();
+        });
+    });
 }
 
 
-/* ============================================================
-   CLEAR BUTTON STATE
-   ============================================================ */
-
-function updateClearButton() {
-
-    if (!clearHistoryBtn) {
-
-        return;
-
-    }
-
-
-    clearHistoryBtn.disabled =
-        scanHistory.length === 0;
-
-}
-
-
-/* ============================================================
-   SCAN AGAIN
-   ============================================================ */
-
-function setupScanAgainButton() {
-
-    if (!scanAgainBtn) {
-
-        return;
-
-    }
-
-
-    scanAgainBtn.addEventListener(
-        "click",
-        () => {
-
-            const scanner =
-                document.getElementById(
-                    "scanner"
-                );
-
-
-            if (scanner) {
-
-                scanner.scrollIntoView({
-                    behavior: "smooth"
-                });
-
-            }
-
-
-            setTimeout(
-                () => {
-
-                    if (urlInput) {
-
-                        urlInput.focus();
-
-                    }
-
-                },
-                500
-            );
-
-        }
-    );
-
-}
-
-
-/* ============================================================
+/* =========================================================
    PRINT REPORT
-   ============================================================ */
+   ========================================================= */
 
-function setupReportButton() {
-
-    if (!printReportBtn) {
-
-        return;
-
-    }
-
-
-    printReportBtn.addEventListener(
-        "click",
-        () => {
-
-            window.print();
-
-        }
-    );
-
+function printReport() {
+    window.print();
 }
 
 
-/* ============================================================
-   SCANNER LOADING STATE
-   ============================================================ */
-
-function setLoadingState(
-    loading
-) {
-
-    if (analyzeBtn) {
-
-        analyzeBtn.disabled =
-            loading;
-
-    }
-
-
-    if (analyzeText) {
-
-        analyzeText.textContent =
-            loading
-                ? "Analyzing..."
-                : "Analyze URL";
-
-    }
-
-
-    if (analyzeArrow) {
-
-        analyzeArrow.style.opacity =
-            loading
-                ? "0.5"
-                : "1";
-
-    }
-
-
-    if (scanLoading) {
-
-        scanLoading.style.display =
-            loading
-                ? "block"
-                : "none";
-
-    }
-
-}
-
-
-/* ============================================================
-   SCANNER MESSAGE
-   ============================================================ */
-
-function showScannerMessage(
-    message
-) {
-
-    if (scannerMessage) {
-
-        scannerMessage.style.display =
-            "block";
-
-    }
-
-
-    if (scannerMessageText) {
-
-        scannerMessageText.textContent =
-            message;
-
-    }
-
-}
-
-
-/* ============================================================
-   HIDE SCANNER MESSAGE
-   ============================================================ */
-
-function hideScannerMessage() {
-
-    if (scannerMessage) {
-
-        scannerMessage.style.display =
-            "none";
-
-    }
-
-}
-
-
-/* ============================================================
-   SCROLL TO RESULT
-   ============================================================ */
-
-function scrollToResult() {
-
-    const possibleSections = [
-
-        document.getElementById(
-            "result"
-        ),
-
-        document.getElementById(
-            "assessment"
-        ),
-
-        document.getElementById(
-            "features"
-        )
-
-    ];
-
-
-    const target =
-        possibleSections.find(
-            element => element
-        );
-
-
-    if (target) {
-
-        setTimeout(
-            () => {
-
-                target.scrollIntoView({
-                    behavior: "smooth",
-                    block: "start"
-                });
-
-            },
-            300
-        );
-
-    }
-
-}
-
-
-/* ============================================================
+/* =========================================================
    NAVIGATION
-   ============================================================ */
+   ========================================================= */
 
 function setupNavigation() {
 
-    navItems.forEach(
-        item => {
+    const links =
+        document.querySelectorAll(
+            'a[href^="#"]'
+        );
 
-            item.addEventListener(
-                "click",
-                event => {
+    links.forEach(link => {
 
-                    const href =
-                        item.getAttribute(
-                            "href"
-                        );
+        link.addEventListener(
+            "click",
+            () => {
 
+                const targetSelector =
+                    link.getAttribute("href");
 
-                    if (
-                        href &&
-                        href.startsWith("#")
-                    ) {
+                const target = targetSelector && targetSelector.length > 1
+                    ? document.querySelector(targetSelector)
+                    : null;
 
-                        const target =
-                            document.querySelector(
-                                href
-                            );
-
-
-                        if (target) {
-
-                            event.preventDefault();
-
-
-                            target.scrollIntoView({
-                                behavior: "smooth"
-                            });
-
-                        }
-
-                    }
-
-
-                    navItems.forEach(
-                        nav => {
-
-                            nav.classList.remove(
-                                "active"
-                            );
-
-                        }
-                    );
-
-
-                    item.classList.add(
-                        "active"
-                    );
-
+                if (target) {
+                    setTimeout(() => {
+                        target.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }, 50);
                 }
-            );
+            }
+        );
+    });
+}
 
+
+/* =========================================================
+   EVENT LISTENERS
+   ========================================================= */
+
+if (analyzeBtn) {
+
+    analyzeBtn.addEventListener(
+        "click",
+        scanURL
+    );
+}
+
+if (scanAgainBtn) {
+
+    scanAgainBtn.addEventListener(
+        "click",
+        scanURL
+    );
+}
+
+if (clearInput) {
+
+    clearInput.addEventListener(
+        "click",
+        clearURLInput
+    );
+}
+
+if (clearHistoryBtn) {
+
+    clearHistoryBtn.addEventListener(
+        "click",
+        clearHistory
+    );
+}
+
+if (printReportBtn) {
+
+    printReportBtn.addEventListener(
+        "click",
+        printReport
+    );
+}
+
+if (urlInput) {
+
+    urlInput.addEventListener(
+        "keydown",
+        event => {
+
+            if (event.key === "Enter") {
+                scanURL();
+            }
         }
     );
-
-
-    updateNavigationOnScroll();
-
 }
 
 
-/* ============================================================
-   NAVIGATION ON SCROLL
-   ============================================================ */
-
-function updateNavigationOnScroll() {
-
-    const sections = [
-
-        "dashboard",
-        "scanner",
-        "history",
-        "features",
-        "report"
-
-    ];
-
-
-    window.addEventListener(
-        "scroll",
-        () => {
-
-            let current =
-                "dashboard";
-
-
-            sections.forEach(
-                id => {
-
-                    const section =
-                        document.getElementById(
-                            id
-                        );
-
-
-                    if (!section) {
-
-                        return;
-
-                    }
-
-
-                    const top =
-                        section.getBoundingClientRect()
-                            .top;
-
-
-                    if (
-                        top <= 160 &&
-                        top >= -500
-                    ) {
-
-                        current =
-                            id;
-
-                    }
-
-                }
-            );
-
-
-            navItems.forEach(
-                item => {
-
-                    const href =
-                        item.getAttribute(
-                            "href"
-                        );
-
-
-                    item.classList.remove(
-                        "active"
-                    );
-
-
-                    if (
-                        href ===
-                        `#${current}`
-                    ) {
-
-                        item.classList.add(
-                            "active"
-                        );
-
-                    }
-
-                }
-            );
-
-        }
-    );
-
-}
-
-
-/* ============================================================
-   HTML ESCAPE
-   ============================================================ */
-
-function escapeHTML(
-    value
-) {
-
-    return String(
-        value ?? ""
-    )
-        .replaceAll(
-            "&",
-            "&amp;"
-        )
-        .replaceAll(
-            "<",
-            "&lt;"
-        )
-        .replaceAll(
-            ">",
-            "&gt;"
-        )
-        .replaceAll(
-            '"',
-            "&quot;"
-        )
-        .replaceAll(
-            "'",
-            "&#039;"
-        );
-
-}
-
-
-/* ============================================================
-   DATE / TIME FORMAT
-   ============================================================ */
-
-function formatDateTime(
-    date
-) {
-
-    return new Intl.DateTimeFormat(
-        "en-IN",
-        {
-            day: "2-digit",
-            month: "long",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-            hour12: true
-        }
-    ).format(date);
-
-}
-
-
-/* ============================================================
-   BACKEND CONNECTION TEST
-   ============================================================ */
-
-async function checkBackendConnection() {
-
-    try {
-
-        const response =
-            await fetch(
-                `${API_BASE_URL}/`
-            );
-
-
-        if (!response.ok) {
-
-            return false;
-
-        }
-
-
-        const data =
-            await response.json();
-
-
-        console.log(
-            "PhishGuard backend:",
-            data.message
-        );
-
-
-        return true;
-
-    } catch (error) {
-
-        console.error(
-            "PhishGuard backend unavailable:",
-            error
-        );
-
-
-        return false;
-
-    }
-
-}
-
-
-/* ============================================================
-   BACKEND HISTORY
-   ============================================================ */
-
-async function loadBackendHistory() {
-
-    try {
-
-        const response =
-            await fetch(
-                `${API_BASE_URL}/api/v1/history`
-            );
-
-
-        if (!response.ok) {
-
-            return;
-
-        }
-
-
-        const backendHistory =
-            await response.json();
-
-
-        if (
-            !Array.isArray(
-                backendHistory
-            )
-        ) {
-
-            return;
-
-        }
-
-
-        const converted =
-            backendHistory
-                .filter(
-                    item => {
-
-                        /*
-                         * Only keep valid scan records.
-                         *
-                         * Old/unfinished records have:
-                         * - classification = null
-                         * - risk_score = null
-                         *
-                         * These should not appear in
-                         * the dashboard history.
-                         */
-
-                        const risk =
-                            Number(
-                                item.risk_score
-                            );
-
-
-                        const hasValidClassification =
-                            typeof item.classification === "string" &&
-                            item.classification.trim() !== "";
-
-
-                        const hasValidRisk =
-                            Number.isFinite(
-                                risk
-                            );
-
-
-                        return (
-                            hasValidClassification &&
-                            hasValidRisk
-                        );
-
-                    }
-                )
-                .map(
-                    item => ({
-
-                        id:
-                            item.id,
-
-                        url:
-                            item.url,
-
-                        time:
-                            formatBackendDate(
-                                item.scan_time
-                            ),
-
-                        risk:
-                            item.risk_score,
-
-                        verdict:
-                            getVerdict(
-                                item.classification
-                            )
-
-                    })
-                );
-
-
-        scanHistory =
-            converted.slice(
-                0,
-                50
-            );
-
-
-        saveHistory();
+/* =========================================================
+   STARTUP
+   ========================================================= */
+
+document.addEventListener(
+    "DOMContentLoaded",
+    () => {
 
         renderHistory();
 
-        updateClearButton();
+        updateDashboardStats();
 
+        setupNavigation();
 
-        console.log(
-            "PhishGuard: Backend history loaded.",
-            scanHistory
-        );
-
-
-    } catch (error) {
+        setupHistoryFilters();
 
         console.log(
-            "Backend history unavailable. Using local history."
+            "PhishGuard frontend loaded successfully."
         );
-
-    }
-
-}
-
-/* ============================================================
-   FORMAT BACKEND TIMESTAMP
-   ============================================================ */
-
-function formatBackendDate(
-    value
-) {
-
-    if (!value) {
-
-        return "--";
-
-    }
-
-
-    /*
-     * SQLite CURRENT_TIMESTAMP is UTC.
-     * Add Z so JavaScript interprets it
-     * correctly and converts it to local time.
-     */
-
-    let dateString =
-        String(value);
-
-
-    if (
-        !dateString.endsWith("Z")
-    ) {
-
-        dateString =
-            dateString.replace(
-                " ",
-                "T"
-            ) + "Z";
-
-    }
-
-
-    const date =
-        new Date(
-            dateString
-        );
-
-
-    if (
-        Number.isNaN(
-            date.getTime()
-        )
-    ) {
-
-        return value;
-
-    }
-
-
-    return formatDateTime(
-        date
-    );
-
-}
-
-
-/* ============================================================
-   DASHBOARD STATISTICS
-   ============================================================ */
-
-async function updateDashboardStats() {
-
-    try {
-
-        const response =
-            await fetch(
-                `${API_BASE_URL}/api/v1/history`
-            );
-
-
-        if (!response.ok) {
-
-            throw new Error(
-                "Could not load scan history."
-            );
-
-        }
-
-
-        const history =
-            await response.json();
-
-
-        if (
-            !Array.isArray(history)
-        ) {
-
-            return;
-
-        }
-
-
-        /*
-         * Only count scans that have a valid
-         * classification.
-         *
-         * Older database records may not have
-         * classification/risk data because they
-         * were created before the risk engine
-         * was integrated.
-         */
-
-        const classifiedHistory =
-            history.filter(
-                item => {
-
-                    const classification =
-                        String(
-                            item.classification || ""
-                        ).toLowerCase();
-
-                    return (
-                        classification === "high_risk" ||
-                        classification === "medium_risk" ||
-                        classification === "phishing" ||
-                        classification === "malicious" ||
-                        classification === "suspicious" ||
-                        classification === "low_risk" ||
-                        classification === "legitimate" ||
-                        classification === "safe"
-                    );
-
-                }
-            );
-
-
-        const total =
-            classifiedHistory.length;
-
-
-        const threats =
-            classifiedHistory.filter(
-                item => {
-
-                    const classification =
-                        String(
-                            item.classification || ""
-                        ).toLowerCase();
-
-
-                    return (
-                        classification === "high_risk" ||
-                        classification === "medium_risk" ||
-                        classification === "phishing" ||
-                        classification === "malicious" ||
-                        classification === "suspicious"
-                    );
-
-                }
-            ).length;
-
-
-        const safe =
-            classifiedHistory.filter(
-                item => {
-
-                    const classification =
-                        String(
-                            item.classification || ""
-                        ).toLowerCase();
-
-
-                    return (
-                        classification === "low_risk" ||
-                        classification === "legitimate" ||
-                        classification === "safe"
-                    );
-
-                }
-            ).length;
-
-
-        /*
-         * IMPORTANT:
-         *
-         * These IDs must match the IDs in index.html.
-         */
-
-        const totalElement =
-            document.getElementById(
-                "totalScans"
-            );
-
-
-        const threatsElement =
-            document.getElementById(
-                "threatsDetected"
-            );
-
-
-        const safeElement =
-            document.getElementById(
-                "safeUrls"
-            );
-
-
-        if (totalElement) {
-
-            totalElement.textContent =
-                total;
-
-        }
-
-
-        if (threatsElement) {
-
-            threatsElement.textContent =
-                threats;
-
-        }
-
-
-        if (safeElement) {
-
-            safeElement.textContent =
-                safe;
-
-        }
-
-
-        console.log(
-            "PhishGuard dashboard statistics:",
-            {
-                total,
-                threats,
-                safe
-            }
-        );
-
-
-    } catch (error) {
-
-        console.error(
-            "Dashboard statistics error:",
-            error
-        );
-
-    }
-
-}
-
-/* ============================================================
-   BACKEND STARTUP
-   ============================================================ */
-
-window.addEventListener(
-    "load",
-    async () => {
-
-        const connected =
-            await checkBackendConnection();
-
-
-        if (connected) {
-
-            console.log(
-                "PhishGuard: Backend connection successful."
-            );
-
-
-            await loadBackendHistory();
-
-
-            /*
-             * Refresh dashboard after
-             * loading database history.
-             */
-
-            await updateDashboardStats();
-
-        }
-
-        else {
-
-            console.warn(
-                "PhishGuard: Backend is not currently available."
-            );
-
-        }
-
     }
 );
-
-
-/* ============================================================
-   END OF PHISHGUARD FRONTEND
-   ============================================================ */
