@@ -1,13 +1,78 @@
+import threading
+
 import joblib
 
 from fastapi.testclient import TestClient
 
 import Backend.main as backend_main
+import app.ml.ml_risk_evidence as ml_risk_evidence
 from Backend.main import app
 from app.features.url_features import extract_url_features
 
 
 client = TestClient(app)
+
+
+def test_ml_model_is_loaded_once_and_reused_across_calls(monkeypatch):
+    ml_risk_evidence._MODEL = None
+    load_calls = []
+    load_lock = threading.Lock()
+
+    class FakeModel:
+        feature_names_in_ = list(extract_url_features("https://google.com").keys())
+        classes_ = [0, 1]
+
+        def predict_proba(self, X):
+            return [[0.99, 0.01]]
+
+    def fake_load(path):
+        with load_lock:
+            load_calls.append(path)
+        return FakeModel()
+
+    monkeypatch.setattr(ml_risk_evidence.joblib, "load", fake_load)
+
+    first = ml_risk_evidence.generate_ml_evidence("https://google.com")
+    second = ml_risk_evidence.generate_ml_evidence("https://paypal-login-security.example.com")
+
+    assert len(load_calls) == 1
+    assert first["classification"] == "phishing"
+    assert second["classification"] == "phishing"
+    assert first["threshold"] == ml_risk_evidence.THRESHOLD
+
+
+def test_ml_model_is_loaded_once_under_concurrent_requests(monkeypatch):
+    ml_risk_evidence._MODEL = None
+    load_calls = []
+    load_lock = threading.Lock()
+    barrier = threading.Barrier(4)
+
+    class FakeModel:
+        feature_names_in_ = list(extract_url_features("https://example.com").keys())
+        classes_ = [0, 1]
+
+        def predict_proba(self, X):
+            return [[0.97, 0.03]]
+
+    def fake_load(path):
+        with load_lock:
+            load_calls.append(path)
+        return FakeModel()
+
+    monkeypatch.setattr(ml_risk_evidence.joblib, "load", fake_load)
+
+    def worker():
+        barrier.wait()
+        result = ml_risk_evidence.generate_ml_evidence("https://example.com")
+        assert result["classification"] == "phishing"
+
+    threads = [threading.Thread(target=worker) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(load_calls) == 1
 
 
 def test_model_feature_contract():

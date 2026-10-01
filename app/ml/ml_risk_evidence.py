@@ -1,4 +1,5 @@
 import json
+import threading
 import warnings
 from pathlib import Path
 
@@ -10,6 +11,21 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MODEL_FILE = PROJECT_ROOT / "models" / "random_forest_url_final.joblib"
 THRESHOLD = 0.95
 warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
+
+_MODEL = None
+_MODEL_LOCK = threading.Lock()
+
+
+def _get_model():
+    """Lazily load and reuse the trained model across requests."""
+    global _MODEL
+
+    if _MODEL is None:
+        with _MODEL_LOCK:
+            if _MODEL is None:
+                _MODEL = joblib.load(MODEL_FILE)
+
+    return _MODEL
 
 
 def generate_ml_evidence(url):
@@ -26,10 +42,10 @@ def generate_ml_evidence(url):
     """
 
     # ---------------------------------------------------------
-    # Load final model
+    # Load final model once and reuse it
     # ---------------------------------------------------------
 
-    model = joblib.load(MODEL_FILE)
+    model = _get_model()
 
     # ---------------------------------------------------------
     # Extract URL features
