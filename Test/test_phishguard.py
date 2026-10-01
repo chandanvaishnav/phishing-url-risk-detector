@@ -25,9 +25,10 @@ def test_ml_model_is_loaded_once_and_reused_across_calls(monkeypatch):
         def predict_proba(self, X):
             return [[0.99, 0.01]]
 
-    def fake_load(path):
+    def fake_load(path, mmap_mode=None):
         with load_lock:
-            load_calls.append(path)
+            load_calls.append((path, mmap_mode))
+        assert mmap_mode == "r"
         return FakeModel()
 
     monkeypatch.setattr(ml_risk_evidence.joblib, "load", fake_load)
@@ -36,6 +37,7 @@ def test_ml_model_is_loaded_once_and_reused_across_calls(monkeypatch):
     second = ml_risk_evidence.generate_ml_evidence("https://paypal-login-security.example.com")
 
     assert len(load_calls) == 1
+    assert load_calls[0][1] == "r"
     assert first["classification"] == "phishing"
     assert second["classification"] == "phishing"
     assert first["threshold"] == ml_risk_evidence.THRESHOLD
@@ -54,9 +56,10 @@ def test_ml_model_is_loaded_once_under_concurrent_requests(monkeypatch):
         def predict_proba(self, X):
             return [[0.97, 0.03]]
 
-    def fake_load(path):
+    def fake_load(path, mmap_mode=None):
         with load_lock:
-            load_calls.append(path)
+            load_calls.append((path, mmap_mode))
+        assert mmap_mode == "r"
         return FakeModel()
 
     monkeypatch.setattr(ml_risk_evidence.joblib, "load", fake_load)

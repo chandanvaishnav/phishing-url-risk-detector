@@ -4,7 +4,7 @@ import warnings
 from pathlib import Path
 
 import joblib
-import pandas as pd
+import numpy as np
 from sklearn.exceptions import InconsistentVersionWarning
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -23,7 +23,7 @@ def _get_model():
     if _MODEL is None:
         with _MODEL_LOCK:
             if _MODEL is None:
-                _MODEL = joblib.load(MODEL_FILE)
+                _MODEL = joblib.load(MODEL_FILE, mmap_mode="r")
 
     return _MODEL
 
@@ -54,18 +54,14 @@ def generate_ml_evidence(url):
     from app.features.url_features import extract_url_features
 
     feature_dict = extract_url_features(url)
-    features = pd.DataFrame([feature_dict])
-    X = features.drop(columns=["label"], errors="ignore")
-
-    # ---------------------------------------------------------
-    # Verify feature order
-    # ---------------------------------------------------------
 
     if hasattr(model, "feature_names_in_"):
         model_features = list(model.feature_names_in_)
-        current_features = list(X.columns)
-        if model_features != current_features:
-            X = X.reindex(columns=model_features, fill_value=0)
+        ordered_values = [float(feature_dict.get(feature_name, 0.0)) for feature_name in model_features]
+        X = np.asarray([ordered_values], dtype=np.float64)
+    else:
+        ordered_values = [float(value) for value in feature_dict.values()]
+        X = np.asarray([ordered_values], dtype=np.float64)
 
     # ---------------------------------------------------------
     # Prediction
