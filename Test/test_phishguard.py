@@ -16,6 +16,16 @@ def test_model_feature_contract():
     assert list(model.feature_names_in_) == list(features.keys())
 
 
+def test_sumit_feature_semantics_match_trained_url_pipeline():
+    google_features = extract_url_features("https://google.com")
+    synthetic_features = extract_url_features("https://paypal-login-security.example.com")
+
+    assert google_features["NoOfOtherSpecialCharsInURL"] == 4
+    assert synthetic_features["NoOfOtherSpecialCharsInURL"] == 7
+    assert synthetic_features["NoOfSubDomain"] == 1
+    assert synthetic_features["suspicious_keyword_count"] == 1
+
+
 def test_scan_valid_url_returns_200():
     response = client.post("/api/v1/scan", json={"url": "https://google.com"})
     assert response.status_code == 200, response.text
@@ -53,10 +63,20 @@ def test_unresolvable_synthetic_url_is_not_safe():
 
 
 def test_scan_invalid_hostname_is_rejected():
+    history_before = client.get("/api/v1/history").json()
     response = client.post("/api/v1/scan", json={"url": "hello"})
     assert response.status_code == 400, response.text
     payload = response.json()
     assert "Invalid URL" in str(payload.get("detail", payload))
+    assert client.get("/api/v1/history").json() == history_before
+
+
+def test_scan_malformed_url_is_rejected_without_history():
+    history_before = client.get("/api/v1/history").json()
+    response = client.post("/api/v1/scan", json={"url": "https://[::1"})
+
+    assert response.status_code == 400, response.text
+    assert client.get("/api/v1/history").json() == history_before
 
 
 def test_ir_failure_does_not_fail_primary_scan(monkeypatch):

@@ -4,7 +4,10 @@
    PHISHGUARD - FRONTEND JAVASCRIPT
    ========================================================= */
 
-const API_URL = "http://127.0.0.1:8000/api/v1/scan";
+const API_BASE_URL = String(
+    window.PHISHGUARD_API_BASE_URL || "http://127.0.0.1:8000"
+).replace(/\/+$/, "");
+const API_URL = `${API_BASE_URL}/api/v1/scan`;
 const HISTORY_KEY = "phishguardHistory";
 
 /* =========================================================
@@ -200,6 +203,8 @@ const printReportBtn = $("printReportBtn");
 const historyList = $("historyList");
 const historyTableBody = $("historyTableBody");
 const clearHistoryBtn = $("clearHistoryBtn");
+const historyFilterButtons = document.querySelectorAll(".history-actions [data-filter]");
+let activeHistoryFilter = "all";
 
 /* Information retrieval */
 
@@ -1237,6 +1242,15 @@ function renderHistory() {
 
     const history =
         getHistory();
+    const filteredHistory = history.filter(item => {
+        if (activeHistoryFilter === "threat") {
+            return item.prediction === "Phishing";
+        }
+        if (activeHistoryFilter === "safe") {
+            return item.prediction === "Safe";
+        }
+        return true;
+    });
 
     const shouldShowEmptyState = history.length === 0;
 
@@ -1248,7 +1262,7 @@ function renderHistory() {
 
         historyTableBody.innerHTML = "";
 
-        history.forEach(item => {
+        filteredHistory.forEach(item => {
 
             const row =
                 document.createElement("tr");
@@ -1263,21 +1277,35 @@ function renderHistory() {
 
             historyTableBody.appendChild(row);
         });
+
+        if (history.length > 0 && filteredHistory.length === 0) {
+            const row = document.createElement("tr");
+            const cell = document.createElement("td");
+            cell.colSpan = 5;
+            cell.className = "history-filter-empty";
+            cell.textContent = activeHistoryFilter === "threat"
+                ? "No threat scans found."
+                : activeHistoryFilter === "safe"
+                    ? "No safe scans found."
+                    : "No scans match this filter.";
+            row.appendChild(cell);
+            historyTableBody.appendChild(row);
+        }
     }
 
     if (historyList) {
 
         historyList.innerHTML = "";
 
-        if (history.length === 0) {
+        if (history.length === 0 || filteredHistory.length === 0) {
 
             historyList.innerHTML =
-                "<p>No Scan History</p>";
+                `<p>${history.length === 0 ? "No Scan History" : "No scans match this filter."}</p>`;
 
             return;
         }
 
-        history.forEach(item => {
+        filteredHistory.forEach(item => {
 
             const div =
                 document.createElement("div");
@@ -1475,9 +1503,31 @@ function clearHistory() {
         HISTORY_KEY
     );
 
+    activeHistoryFilter = "all";
+    historyFilterButtons.forEach(button => {
+        const selected = button.dataset.filter === "all";
+        button.classList.toggle("active", selected);
+        button.setAttribute("aria-pressed", String(selected));
+    });
+
     renderHistory();
 
     updateDashboardStats();
+}
+
+function setupHistoryFilters() {
+    historyFilterButtons.forEach(button => {
+        button.setAttribute("aria-pressed", String(button.dataset.filter === activeHistoryFilter));
+        button.addEventListener("click", () => {
+            activeHistoryFilter = button.dataset.filter || "all";
+            historyFilterButtons.forEach(filterButton => {
+                const selected = filterButton === button;
+                filterButton.classList.toggle("active", selected);
+                filterButton.setAttribute("aria-pressed", String(selected));
+            });
+            renderHistory();
+        });
+    });
 }
 
 
@@ -1596,6 +1646,8 @@ document.addEventListener(
         updateDashboardStats();
 
         setupNavigation();
+
+        setupHistoryFilters();
 
         console.log(
             "PhishGuard frontend loaded successfully."

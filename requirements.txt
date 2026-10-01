@@ -1,5 +1,10 @@
-flask
+fastapi
+uvicorn
+pydantic
 pandas
 numpy
 scikit-learn
+joblib
+httpx
 matplotlib
+tldextract

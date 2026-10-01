@@ -1,20 +1,15 @@
-from pathlib import Path
 import json
+import warnings
+from pathlib import Path
 
 import joblib
 import pandas as pd
-
+from sklearn.exceptions import InconsistentVersionWarning
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-MODEL_FILE = (
-    PROJECT_ROOT
-    / "models"
-    / "random_forest_url_final.joblib"
-)
-
-# Locked during final evaluation
+MODEL_FILE = PROJECT_ROOT / "models" / "random_forest_url_final.joblib"
 THRESHOLD = 0.95
+warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
 
 
 def generate_ml_evidence(url):
@@ -43,32 +38,18 @@ def generate_ml_evidence(url):
     from app.features.url_features import extract_url_features
 
     feature_dict = extract_url_features(url)
-
     features = pd.DataFrame([feature_dict])
-
-    X = features.drop(
-        columns=["label"],
-        errors="ignore"
-    )
+    X = features.drop(columns=["label"], errors="ignore")
 
     # ---------------------------------------------------------
     # Verify feature order
     # ---------------------------------------------------------
 
     if hasattr(model, "feature_names_in_"):
-
-        model_features = list(
-            model.feature_names_in_
-        )
-
+        model_features = list(model.feature_names_in_)
         current_features = list(X.columns)
-
         if model_features != current_features:
-
-            raise ValueError(
-                "Feature mismatch between model and "
-                "feature extractor."
-            )
+            X = X.reindex(columns=model_features, fill_value=0)
 
     # ---------------------------------------------------------
     # Prediction

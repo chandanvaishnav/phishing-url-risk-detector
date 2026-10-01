@@ -5,12 +5,12 @@ PhishGuard is a cybersecurity demonstration that classifies submitted URLs with 
 ## Technologies
 
 - Python, FastAPI, Uvicorn, Pydantic
-- scikit-learn, pandas, NumPy, joblib
+- scikit-learn, pandas, NumPy, joblib, tldextract
 - SQLite
 - HTML, CSS, and JavaScript
 - Existing Random Forest model: `models/random_forest_url_final.joblib`
 
-No new Python dependency is required for IR. TF-IDF uses the project's existing scikit-learn dependency; PageRank is implemented locally.
+TF-IDF uses the project's existing scikit-learn dependency; PageRank is implemented locally. Sumit's URL feature extractor uses `tldextract` with its bundled suffix snapshot, so feature extraction does not fetch a suffix list from the network.
 
 ## Team Responsibilities
 
@@ -22,7 +22,7 @@ No new Python dependency is required for IR. TF-IDF uses the project's existing 
 
 1. The API validates and normalizes the submitted URL.
 2. Existing feature extraction and the Random Forest produce the primary ML evidence.
-3. Existing DNS, SSL, and URL-security checks provide technical evidence.
+3. DNS, TLS, and URL-security checks provide technical evidence; DNS/TLS connections reject non-public address resolutions, and TLS connects to the validated address while verifying the hostname certificate.
 4. The existing risk engine calculates the risk result. IR does not replace Random Forest or change that score.
 5. Supporting IR calculations analyze URL terms, rank the URL in a project graph, and retrieve similar historical URLs.
 6. The response, including `ir_analysis`, is stored in the existing SQLite scan history and displayed by the frontend.
@@ -117,6 +117,12 @@ python -m http.server 5501 --bind 127.0.0.1
 
 Open `http://127.0.0.1:5501`. The scan endpoint is `POST http://127.0.0.1:8000/api/v1/scan`; history is `GET http://127.0.0.1:8000/api/v1/history`.
 
+## Deployment
+
+`render.yaml` defines a Render Python web service and static frontend. The API build retrieves the existing Random Forest through Git LFS, installs `requirements.txt`, and mounts a persistent disk for `db.sqlite3`. The static build substitutes the API service host into `Frontend/api-config.js`, so production does not call localhost. The same API config defaults to localhost for development.
+
+The Blueprint has not been deployed or externally verified. Deployment requires an authorized Render account/service creation; no Render CLI or account credentials were available in the implementation environment. Do not treat the local deployment configuration as a live deployment.
+
 ## API Response
 
 The scan response retains its existing fields and adds `ir_analysis`:
@@ -164,7 +170,7 @@ The values above illustrate the response shape from a local run; scores and reco
 python -m pytest Test -q
 ```
 
-The tests cover the existing model feature contract and scan endpoint plus IR tokenization, smoothed language-model scoring, graph ranking, TF-IDF retrieval, and API integration. Controlled synthetic URLs are analyzed as strings; they are not opened as websites.
+The tests cover the model feature contract and Sumit-aligned feature values, scan endpoint and invalid-history behavior, private-address DNS/TLS blocking, IR tokenization, smoothed language-model scoring, graph ranking, TF-IDF retrieval, and IR/API failure isolation. Controlled synthetic URLs are analyzed as scanner input; they are not opened as websites.
 
 ## Limitations
 
